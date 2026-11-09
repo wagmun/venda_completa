@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- DEBUG LOCAL: App Sandbox desligado para testar sem precisar de
+	     certificado de desenvolvedor. Isso libera o acesso ao Keychain
+	     (flutter_secure_storage) e à rede (servidor localhost) sem o
+	     entitlement keychain-access-groups, que exigiria assinatura.
+	     O Release.entitlements mantém o sandbox + keychain para produção. -->
+	<key>com.apple.security.cs.allow-jit</key>
+	<true/>
+</dict>
+</plist>

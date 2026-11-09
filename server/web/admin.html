@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Painel Administrativo - Venda Completa</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, system-ui, sans-serif; background: #f4f5f7; color: #1a1a2e; }
+  header { background: #2d4bff; color: #fff; padding: 14px 20px; display: flex; justify-content: space-between; align-items: center; }
+  header h1 { font-size: 18px; margin: 0; }
+  header .who { font-size: 13px; opacity: .9; }
+  button { cursor: pointer; border: none; border-radius: 6px; padding: 9px 14px; font-size: 14px; font-weight: 600; }
+  .btn-primary { background: #2d4bff; color: #fff; }
+  .btn-light { background: #e7e9f5; color: #2d4bff; }
+  .btn-ghost { background: transparent; color: #fff; border: 1px solid rgba(255,255,255,.5); }
+  input, select { width: 100%; padding: 9px; border: 1px solid #ccd; border-radius: 6px; font-size: 14px; }
+  label { font-size: 12px; color: #667; display: block; margin: 8px 0 3px; }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 20px; }
+  .card { background: #fff; border-radius: 10px; padding: 20px; box-shadow: 0 1px 4px rgba(0,0,0,.06); margin-bottom: 18px; }
+  .center { max-width: 380px; margin: 60px auto; }
+  .tabs { display: flex; gap: 8px; margin-bottom: 16px; }
+  .tabs button.active { background: #2d4bff; color: #fff; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #eee; }
+  th { color: #667; font-size: 12px; text-transform: uppercase; }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .msg { padding: 10px; border-radius: 6px; font-size: 14px; margin: 10px 0; }
+  .msg.err { background: #fde8e8; color: #c0392b; }
+  .msg.ok  { background: #e6f7ec; color: #1e7e45; }
+  .hidden { display: none; }
+  h2 { font-size: 16px; margin: 0 0 12px; }
+  .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="loginView" class="center card">
+  <h2>Painel Administrativo</h2>
+  <div id="loginMsg"></div>
+  <label>E-mail do administrador</label>
+  <input id="email" type="email" placeholder="admin@empresa.com" autocomplete="username">
+  <label>Senha</label>
+  <input id="senha" type="password" autocomplete="current-password">
+  <div class="actions">
+    <button class="btn-primary" onclick="login()">Entrar</button>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="appView" class="hidden">
+  <header>
+    <h1>Venda Completa — Administração</h1>
+    <div><span class="who" id="who"></span> &nbsp; <button class="btn-ghost" onclick="logout()">Sair</button></div>
+  </header>
+  <div class="wrap">
+    <div class="tabs">
+      <button id="tabProd" class="active" onclick="showTab('prod')">Produtos</button>
+      <button id="tabVend" onclick="showTab('vend')">Vendedores</button>
+      <button id="tabNota" onclick="showTab('nota')">Notas fiscais</button>
+    </div>
+
+    <!-- PRODUTOS -->
+    <div id="prodTab">
+      <div class="card">
+        <h2>Importar catálogo (planilha CSV)</h2>
+        <p style="font-size:13px;color:#667;margin:4px 0 12px">
+          Suba uma planilha com os produtos. Colunas: <b>sku; codigo_ean; descricao; preco_venda; ncm; unidade_medida; qtd_fisica</b>.
+          Produtos com SKU já existente são <b>atualizados</b>. Separador <b>;</b> e vírgula decimal (ex.: 54,90) são aceitos.
+        </p>
+        <div id="importMsg"></div>
+        <div class="row" style="align-items:end">
+          <div><label>Arquivo CSV</label><input id="csvFile" type="file" accept=".csv,text/csv"></div>
+          <div class="actions" style="margin:0">
+            <button class="btn-light" onclick="downloadTemplate()">Baixar modelo</button>
+            <button class="btn-primary" onclick="importCsv()">Importar</button>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <h2 id="prodFormTitle">Novo produto</h2>
+        <div id="prodMsg"></div>
+        <input id="pId" type="hidden">
+        <div class="row">
+          <div><label>SKU</label><input id="pSku"></div>
+          <div><label>Código EAN</label><input id="pEan"></div>
+        </div>
+        <label>Descrição</label><input id="pDesc">
+        <div class="row">
+          <div><label>Preço de venda (R$)</label><input id="pPreco" type="number" step="0.01"></div>
+          <div><label>Estoque (qtd física)</label><input id="pQtd" type="number" step="1"></div>
+        </div>
+        <div class="row">
+          <div><label>NCM</label><input id="pNcm" value="00000000"></div>
+          <div><label>Unidade</label><input id="pUn" value="UN"></div>
+        </div>
+        <div class="actions">
+          <button class="btn-light hidden" id="pCancel" onclick="resetProdForm()">Cancelar</button>
+          <button class="btn-primary" onclick="saveProduct()">Salvar</button>
+        </div>
+      </div>
+      <div class="card">
+        <h2>Produtos cadastrados</h2>
+        <table><thead><tr><th>SKU</th><th>Descrição</th><th>Preço</th><th>Estoque</th><th></th></tr></thead>
+        <tbody id="prodRows"></tbody></table>
+      </div>
+    </div>
+
+    <!-- VENDEDORES -->
+    <div id="vendTab" class="hidden">
+      <div class="card">
+        <h2 id="vendFormTitle">Novo vendedor</h2>
+        <div id="vendMsg"></div>
+        <input id="vId" type="hidden">
+        <div class="row">
+          <div><label>Nome</label><input id="vNome"></div>
+          <div><label>CPF</label><input id="vCpf"></div>
+        </div>
+        <div class="row">
+          <div><label>E-mail (login do vendedor)</label><input id="vEmail" type="email"></div>
+          <div><label>Senha (em branco mantém)</label><input id="vSenha" type="password"></div>
+        </div>
+        <div class="actions">
+          <button class="btn-light hidden" id="vCancel" onclick="resetSellerForm()">Cancelar</button>
+          <button class="btn-primary" onclick="saveSeller()">Salvar</button>
+        </div>
+      </div>
+      <div class="card">
+        <h2>Vendedores da empresa</h2>
+        <table><thead><tr><th>Nome</th><th>E-mail</th><th>CPF</th><th>Ativo</th><th></th></tr></thead>
+        <tbody id="vendRows"></tbody></table>
+      </div>
+    </div>
+
+    <!-- NOTAS FISCAIS -->
+    <div id="notaTab" class="hidden">
+      <div class="card">
+        <h2>Notas fiscais emitidas</h2>
+        <p style="font-size:13px;color:#667;margin:4px 0 12px">
+          <b>AUTORIZADO</b> = transmitida à SEFAZ (simulada) com protocolo. <b>OFFLINE</b> = em contingência, ainda não transmitida.
+        </p>
+        <div id="notaMsg"></div>
+        <table><thead><tr><th>Nº</th><th>Status</th><th>Protocolo</th><th>Valor</th><th>Chave</th><th>XML</th></tr></thead>
+        <tbody id="notaRows"></tbody></table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = location.origin;
+let token = localStorage.getItem('admin_token') || '';
+
+function msg(el, text, kind) {
+  document.getElementById(el).innerHTML = text ? `<div class="msg ${kind}">${text}</div>` : '';
+}
+async function api(path, method = 'GET', body) {
+  const res = await fetch(API + path, {
+    method,
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || ('Erro ' + res.status));
+  return data;
+}
+
+async function login() {
+  msg('loginMsg', '', '');
+  try {
+    const email = document.getElementById('email').value.trim();
+    const senha = document.getElementById('senha').value;
+    const res = await fetch(API + '/auth/login', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password: senha }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Credenciais inválidas');
+    if (data.role !== 'admin') throw new Error('Este usuário não é administrador.');
+    token = data.access_token;
+    localStorage.setItem('admin_token', token);
+    localStorage.setItem('admin_who', data.seller_name + ' · ' + data.tenant_name);
+    enterApp();
+  } catch (e) { msg('loginMsg', e.message, 'err'); }
+}
+
+function enterApp() {
+  document.getElementById('loginView').classList.add('hidden');
+  document.getElementById('appView').classList.remove('hidden');
+  document.getElementById('who').textContent = localStorage.getItem('admin_who') || '';
+  loadProducts(); loadSellers();
+}
+function logout() {
+  token = ''; localStorage.removeItem('admin_token');
+  document.getElementById('appView').classList.add('hidden');
+  document.getElementById('loginView').classList.remove('hidden');
+}
+function showTab(t) {
+  document.getElementById('prodTab').classList.toggle('hidden', t !== 'prod');
+  document.getElementById('vendTab').classList.toggle('hidden', t !== 'vend');
+  document.getElementById('notaTab').classList.toggle('hidden', t !== 'nota');
+  document.getElementById('tabProd').classList.toggle('active', t === 'prod');
+  document.getElementById('tabVend').classList.toggle('active', t === 'vend');
+  document.getElementById('tabNota').classList.toggle('active', t === 'nota');
+  if (t === 'nota') loadInvoices();
+}
+
+// ----- Produtos -----
+async function loadProducts() {
+  try {
+    const list = await api('/admin/products');
+    document.getElementById('prodRows').innerHTML = list.map(p => `
+      <tr>
+        <td>${p.sku}</td><td>${p.descricao}</td>
+        <td>R$ ${Number(p.preco_venda).toFixed(2)}</td>
+        <td>${Number(p.qtd_fisica).toFixed(0)}</td>
+        <td>
+          <button class="btn-light" onclick='editProduct(${JSON.stringify(p)})'>Editar</button>
+          <button class="btn-light" onclick="deleteProduct('${p.id}', '${p.sku}')">Excluir</button>
+        </td>
+      </tr>`).join('');
+  } catch (e) { msg('prodMsg', e.message, 'err'); }
+}
+function editProduct(p) {
+  document.getElementById('pId').value = p.id;
+  document.getElementById('pSku').value = p.sku;
+  document.getElementById('pSku').disabled = true;
+  document.getElementById('pEan').value = p.codigo_ean || '';
+  document.getElementById('pDesc').value = p.descricao;
+  document.getElementById('pPreco').value = p.preco_venda;
+  document.getElementById('pQtd').value = p.qtd_fisica;
+  document.getElementById('pNcm').value = p.ncm || '00000000';
+  document.getElementById('pUn').value = p.unidade_medida || 'UN';
+  document.getElementById('prodFormTitle').textContent = 'Editar produto';
+  document.getElementById('pCancel').classList.remove('hidden');
+  window.scrollTo(0, 0);
+}
+function resetProdForm() {
+  ['pId','pSku','pEan','pDesc','pPreco','pQtd'].forEach(i => document.getElementById(i).value = '');
+  document.getElementById('pNcm').value = '00000000';
+  document.getElementById('pUn').value = 'UN';
+  document.getElementById('pSku').disabled = false;
+  document.getElementById('prodFormTitle').textContent = 'Novo produto';
+  document.getElementById('pCancel').classList.add('hidden');
+  msg('prodMsg', '', '');
+}
+async function deleteProduct(id, sku) {
+  if (!confirm('Excluir o produto ' + sku + '?')) return;
+  try {
+    await api('/admin/products/' + id, 'DELETE');
+    msg('prodMsg', 'Produto excluído.', 'ok');
+    loadProducts();
+  } catch (e) { msg('prodMsg', e.message, 'err'); }
+}
+async function saveProduct() {
+  const id = document.getElementById('pId').value;
+  const body = {
+    sku: document.getElementById('pSku').value.trim(),
+    codigo_ean: document.getElementById('pEan').value.trim(),
+    descricao: document.getElementById('pDesc').value.trim(),
+    preco_venda: parseFloat(document.getElementById('pPreco').value) || 0,
+    qtd_fisica: parseFloat(document.getElementById('pQtd').value) || 0,
+    ncm: document.getElementById('pNcm').value.trim(),
+    unidade_medida: document.getElementById('pUn').value.trim(),
+  };
+  try {
+    if (id) await api('/admin/products/' + id, 'PUT', body);
+    else await api('/admin/products', 'POST', body);
+    msg('prodMsg', 'Produto salvo!', 'ok');
+    resetProdForm(); loadProducts();
+  } catch (e) { msg('prodMsg', e.message, 'err'); }
+}
+
+// ----- Importação CSV -----
+function downloadTemplate() {
+  const csv = [
+    'sku;codigo_ean;descricao;preco_venda;ncm;unidade_medida;qtd_fisica',
+    'EX-001;7890000000017;Produto de exemplo;19,90;00000000;UN;50',
+  ].join('\r\n');
+  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'modelo-catalogo.csv';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+async function importCsv() {
+  const file = document.getElementById('csvFile').files[0];
+  if (!file) { msg('importMsg', 'Escolha um arquivo CSV.', 'err'); return; }
+  msg('importMsg', 'Importando...', 'ok');
+  try {
+    const text = await file.text();
+    const res = await fetch(API + '/admin/products/import', {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/csv', 'Authorization': 'Bearer ' + token },
+      body: text,
+    });
+    const r = await res.json();
+    if (!res.ok) throw new Error(r.error || ('Erro ' + res.status));
+    let txt = `Importação concluída: <b>${r.criados}</b> criados, <b>${r.atualizados}</b> atualizados.`;
+    if (r.erros && r.erros.length) {
+      txt += `<br>${r.erros.length} linha(s) com erro: ` +
+        r.erros.slice(0, 5).map(e => `linha ${e.linha} (${e.motivo})`).join('; ') +
+        (r.erros.length > 5 ? '…' : '');
+    }
+    msg('importMsg', txt, r.erros && r.erros.length ? 'err' : 'ok');
+    document.getElementById('csvFile').value = '';
+    loadProducts();
+  } catch (e) { msg('importMsg', e.message, 'err'); }
+}
+
+// ----- Vendedores -----
+async function loadSellers() {
+  try {
+    const list = await api('/admin/sellers');
+    document.getElementById('vendRows').innerHTML = list.map(s => `
+      <tr>
+        <td>${s.nome}</td><td>${s.email}</td><td>${s.cpf || ''}</td>
+        <td>${s.ativo ? 'Sim' : 'Não'}</td>
+        <td>
+          <button class="btn-light" onclick='editSeller(${JSON.stringify(s)})'>Editar</button>
+          <button class="btn-light" onclick='toggleSeller(${JSON.stringify(s)})'>${s.ativo ? 'Inativar' : 'Ativar'}</button>
+        </td>
+      </tr>`).join('');
+  } catch (e) { msg('vendMsg', e.message, 'err'); }
+}
+function editSeller(s) {
+  document.getElementById('vId').value = s.id;
+  document.getElementById('vNome').value = s.nome;
+  document.getElementById('vCpf').value = s.cpf || '';
+  document.getElementById('vEmail').value = s.email;
+  document.getElementById('vSenha').value = '';
+  document.getElementById('vendFormTitle').textContent = 'Editar vendedor';
+  document.getElementById('vCancel').classList.remove('hidden');
+  window.scrollTo(0, 0);
+}
+function resetSellerForm() {
+  ['vId','vNome','vCpf','vEmail','vSenha'].forEach(i => document.getElementById(i).value = '');
+  document.getElementById('vendFormTitle').textContent = 'Novo vendedor';
+  document.getElementById('vCancel').classList.add('hidden');
+  msg('vendMsg', '', '');
+}
+async function toggleSeller(s) {
+  try {
+    if (s.ativo) {
+      await api('/admin/sellers/' + s.id, 'DELETE');
+    } else {
+      await api('/admin/sellers/' + s.id, 'PUT',
+        { nome: s.nome, email: s.email, cpf: s.cpf, ativo: true });
+    }
+    loadSellers();
+  } catch (e) { msg('vendMsg', e.message, 'err'); }
+}
+async function saveSeller() {
+  const id = document.getElementById('vId').value;
+  const nome = document.getElementById('vNome').value.trim();
+  const cpf = document.getElementById('vCpf').value.trim();
+  const email = document.getElementById('vEmail').value.trim();
+  const senha = document.getElementById('vSenha').value;
+  try {
+    if (id) {
+      await api('/admin/sellers/' + id, 'PUT',
+        { nome, email, cpf, ativo: true, ...(senha ? { senha } : {}) });
+    } else {
+      await api('/admin/sellers', 'POST', { nome, email, cpf, senha });
+    }
+    msg('vendMsg', 'Vendedor salvo!', 'ok');
+    resetSellerForm();
+    loadSellers();
+  } catch (e) { msg('vendMsg', e.message, 'err'); }
+}
+
+// ----- Notas fiscais -----
+async function loadInvoices() {
+  try {
+    const list = await api('/admin/invoices');
+    document.getElementById('notaRows').innerHTML = list.map(n => {
+      const cor = n.status_sefaz === 'AUTORIZADO' ? '#1e7e45' : '#b26a00';
+      return `<tr>
+        <td>${n.serie}/${n.numero}</td>
+        <td><b style="color:${cor}">${n.status_sefaz}</b></td>
+        <td>${n.protocolo || '-'}</td>
+        <td>R$ ${Number(n.valor_total).toFixed(2)}</td>
+        <td style="font-family:monospace;font-size:11px">${n.chave_acesso}</td>
+        <td><button class="btn-light" onclick="verXml('${n.chave_acesso}')">Ver XML</button></td>
+      </tr>`;
+    }).join('');
+  } catch (e) { msg('notaMsg', e.message, 'err'); }
+}
+
+async function verXml(chave) {
+  try {
+    const res = await fetch(API + '/admin/invoices/' + chave + '/xml', {
+      headers: { 'Authorization': 'Bearer ' + token },
+    });
+    if (!res.ok) throw new Error('XML não disponível.');
+    const xml = await res.text();
+    const w = window.open('', '_blank');
+    w.document.write('<pre style="white-space:pre-wrap;word-break:break-all;font-size:12px">' +
+      xml.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</pre>');
+    w.document.title = 'NFC-e ' + chave;
+  } catch (e) { msg('notaMsg', e.message, 'err'); }
+}
+
+// auto-login se já houver token
+if (token) { try { enterApp(); } catch (e) {} }
+</script>
+</body>
+</html>

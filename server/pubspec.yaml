@@ -1,0 +1,19 @@
+name: venda_completa_server
+description: Backend Shelf + PostgreSQL para o app venda_completa.
+publish_to: none
+version: 0.1.0
+
+environment:
+  sdk: ^3.7.0
+
+dependencies:
+  shelf: ^1.4.0
+  shelf_router: ^1.1.0
+  shelf_web_socket: ^3.0.0
+  web_socket_channel: ^3.0.0
+  postgres: ^3.5.0
+  dart_jsonwebtoken: ^3.0.0
+  crypto: ^3.0.0
+
+dev_dependencies:
+  lints: ^5.0.0
