@@ -24,7 +24,7 @@ import 'features/cart/presentation/cart_screen.dart';
 /// URL base do backend central (Fonte Única da Verdade).
 /// macOS/desktop/web local: localhost. Emulador Android: http://10.0.2.2:3000.
 /// Aparelho físico: http://<IP-do-Mac>:3000. Produção: domínio do servidor.
-const String kApiBaseUrl = 'http://localhost:3000';
+const String kApiBaseUrl = 'https://venda-completa-api.onrender.com';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();

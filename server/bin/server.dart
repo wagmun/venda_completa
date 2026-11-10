@@ -9,8 +9,52 @@ import 'package:shelf_web_socket/shelf_web_socket.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:venda_completa_server/auth.dart';
 import 'package:venda_completa_server/db.dart';
+import 'package:venda_completa_server/bling_service.dart';
 import 'package:venda_completa_server/nfce_xml_builder.dart';
 import 'package:venda_completa_server/sefaz_service.dart';
+
+final BlingService _bling = BlingService();
+
+/// Access token do Bling do tenant, renovando se expirado. Null se não conectado.
+Future<String?> _blingToken(String tenantId) async {
+  final rows = await Db.query(
+    'SELECT bling_access_token, bling_refresh_token, bling_token_expira_em FROM tenants WHERE id = @t',
+    params: {'t': tenantId},
+  );
+  if (rows.isEmpty) return null;
+  final r = rows.first;
+  final access = (r['bling_access_token'] ?? '').toString();
+  final refresh = (r['bling_refresh_token'] ?? '').toString();
+  if (access.isEmpty) return null;
+  final exp = r['bling_token_expira_em'];
+  final expira = exp is DateTime ? exp : DateTime.tryParse('${exp ?? ''}');
+  if (expira != null && expira.isAfter(DateTime.now().add(const Duration(minutes: 2)))) {
+    return access;
+  }
+  if (refresh.isEmpty) return access;
+  try {
+    final t = await _bling.refresh(refresh);
+    await _storeBlingTokens(tenantId, t);
+    return t.accessToken;
+  } catch (_) {
+    return access;
+  }
+}
+
+Future<void> _storeBlingTokens(String tenantId, BlingTokens t) async {
+  await Db.connection.execute(
+    Sql.named('''
+      UPDATE tenants SET bling_access_token = @a, bling_refresh_token = @r,
+        bling_token_expira_em = @e WHERE id = @t
+    '''),
+    parameters: {
+      'a': t.accessToken,
+      'r': t.refreshToken,
+      'e': DateTime.now().add(Duration(seconds: t.expiresIn)),
+      't': tenantId,
+    },
+  );
+}
 
 /// Transmissão fiscal. Troque por uma implementação real (provedor/SEFAZ)
 /// para produção — é o único ponto a mudar.
@@ -324,6 +368,26 @@ Future<Response> _syncVenda(Request req) async {
       );
     } catch (_) {/* fica OFFLINE para nova tentativa de conciliação */}
   }
+
+  // Empurra a venda ao Bling, se a empresa estiver conectada (best-effort).
+  try {
+    final bt = await _blingToken(tenantId);
+    if (bt != null) {
+      await _bling.createSale(
+        bt,
+        clienteNome: clienteNome,
+        clienteDoc: clienteDoc,
+        itens: items
+            .map((i) => {
+                  'descricao': i['descricao'],
+                  'sku': i['sku'],
+                  'quantidade': i['quantidade'],
+                  'valor': i['preco_unitario'],
+                })
+            .toList(),
+      );
+    }
+  } catch (_) {/* não bloqueia a venda; reconcilia depois */}
 
   // Broadcast de estoque em tempo real para os outros vendedores do tenant.
   try {
@@ -758,6 +822,114 @@ Future<Response> _adminInvoiceXml(Request req, String chave) async {
   );
 }
 
+/// GET /admin/bling/connect — devolve a URL de autorização OAuth do Bling.
+Future<Response> _blingConnect(Request req) async {
+  final claims = _adminClaims(req);
+  if (claims == null) return _json(403, {'error': 'Acesso restrito ao administrador.'});
+  if (!_bling.configurado) {
+    return _json(400, {'error': 'Bling não configurado no servidor (BLING_CLIENT_ID/SECRET).'});
+  }
+  return _json(200, {'url': _bling.authorizeUrl(claims['tenant_id'].toString())});
+}
+
+/// GET /bling/callback?code=&state= — o Bling redireciona aqui após autorizar.
+Future<Response> _blingCallback(Request req) async {
+  final code = req.url.queryParameters['code'] ?? '';
+  final state = req.url.queryParameters['state'] ?? ''; // tenant_id
+  if (code.isEmpty || state.isEmpty) {
+    return Response(400, body: 'code/state ausentes');
+  }
+  try {
+    final t = await _bling.exchangeCode(code);
+    await _storeBlingTokens(state, t);
+  } catch (e) {
+    return Response(500, body: 'Falha ao conectar Bling: $e');
+  }
+  return Response.ok(
+    '<html><body style="font-family:sans-serif;padding:40px">'
+    '<h2>Bling conectado!</h2><p>Pode fechar esta aba e voltar ao painel.</p></body></html>',
+    headers: {'content-type': 'text/html; charset=utf-8'},
+  );
+}
+
+/// GET /admin/bling/status — se a empresa está conectada ao Bling.
+Future<Response> _blingStatus(Request req) async {
+  final claims = _adminClaims(req);
+  if (claims == null) return _json(403, {'error': 'Acesso restrito ao administrador.'});
+  final rows = await Db.query(
+    "SELECT (bling_access_token IS NOT NULL AND bling_access_token <> '') AS conectado FROM tenants WHERE id = @t",
+    params: {'t': claims['tenant_id'].toString()},
+  );
+  return _json(200, {
+    'configurado': _bling.configurado,
+    'conectado': rows.isNotEmpty && rows.first['conectado'] == true,
+  });
+}
+
+/// POST /admin/bling/sync — puxa produtos+estoque do Bling para o catálogo.
+Future<Response> _blingSync(Request req) async {
+  final claims = _adminClaims(req);
+  if (claims == null) return _json(403, {'error': 'Acesso restrito ao administrador.'});
+  final tenantId = claims['tenant_id'].toString();
+  final token = await _blingToken(tenantId);
+  if (token == null) return _json(400, {'error': 'Bling não conectado para esta empresa.'});
+
+  List<Map<String, dynamic>> produtos;
+  try {
+    produtos = await _bling.getProducts(token);
+  } catch (e) {
+    return _json(502, {'error': 'Falha ao consultar o Bling: $e'});
+  }
+
+  var criados = 0, atualizados = 0;
+  for (final p in produtos) {
+    final sku = (p['sku'] ?? '').toString();
+    if (sku.isEmpty) continue;
+    try {
+      final inserted = await Db.connection.runTx((tx) async {
+        final up = await tx.execute(
+          Sql.named('''
+            INSERT INTO products (tenant_id, codigo_ean, sku, descricao,
+              preco_venda, ncm, unidade_medida)
+            VALUES (@t, @ean, @sku, @desc, @preco, @ncm, @un)
+            ON CONFLICT (tenant_id, sku) DO UPDATE SET
+              codigo_ean = EXCLUDED.codigo_ean, descricao = EXCLUDED.descricao,
+              preco_venda = EXCLUDED.preco_venda, ncm = EXCLUDED.ncm,
+              unidade_medida = EXCLUDED.unidade_medida, ativo = true
+            RETURNING id, (xmax = 0) AS inserted
+          '''),
+          parameters: {
+            't': tenantId,
+            'ean': (p['codigo_ean'] ?? '').toString(),
+            'sku': sku,
+            'desc': (p['descricao'] ?? '').toString(),
+            'preco': _toDouble(p['preco']),
+            'ncm': (p['ncm'] ?? '00000000').toString(),
+            'un': (p['unidade_medida'] ?? 'UN').toString(),
+          },
+        );
+        final pid = up.first[0].toString();
+        await tx.execute(
+          Sql.named('''
+            INSERT INTO inventory (tenant_id, product_id, qtd_fisica)
+            VALUES (@t, @p, @q)
+            ON CONFLICT (tenant_id, product_id) DO UPDATE SET
+              qtd_fisica = EXCLUDED.qtd_fisica, updated_at = CURRENT_TIMESTAMP
+          '''),
+          parameters: {'t': tenantId, 'p': pid, 'q': _toDouble(p['qtd_fisica'])},
+        );
+        return up.first[1] as bool;
+      });
+      if (inserted) {
+        criados++;
+      } else {
+        atualizados++;
+      }
+    } catch (_) {/* pula item com problema */}
+  }
+  return _json(200, {'total': criados + atualizados, 'criados': criados, 'atualizados': atualizados});
+}
+
 /// DELETE /admin/products/<id> — desativa o produto (soft-delete).
 Future<Response> _adminDeleteProduct(Request req, String id) async {
   final claims = _adminClaims(req);
@@ -924,7 +1096,11 @@ Future<void> main() async {
     ..put('/admin/sellers/<id>', _adminUpdateSeller)
     ..delete('/admin/sellers/<id>', _adminDeleteSeller)
     ..get('/admin/invoices', _adminListInvoices)
-    ..get('/admin/invoices/<chave>/xml', _adminInvoiceXml);
+    ..get('/admin/invoices/<chave>/xml', _adminInvoiceXml)
+    ..get('/admin/bling/connect', _blingConnect)
+    ..get('/admin/bling/status', _blingStatus)
+    ..post('/admin/bling/sync', _blingSync)
+    ..get('/bling/callback', _blingCallback);
 
   final handler = const Pipeline()
       .addMiddleware(logRequests())

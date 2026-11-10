@@ -59,6 +59,7 @@
       <button id="tabProd" class="active" onclick="showTab('prod')">Produtos</button>
       <button id="tabVend" onclick="showTab('vend')">Vendedores</button>
       <button id="tabNota" onclick="showTab('nota')">Notas fiscais</button>
+      <button id="tabBling" onclick="showTab('bling')">Bling</button>
     </div>
 
     <!-- PRODUTOS -->
@@ -145,6 +146,24 @@
         <tbody id="notaRows"></tbody></table>
       </div>
     </div>
+
+    <!-- BLING -->
+    <div id="blingTab" class="hidden">
+      <div class="card">
+        <h2>Integração com o Bling</h2>
+        <div id="blingMsg"></div>
+        <p id="blingStatus" style="font-size:14px;margin:8px 0">Verificando...</p>
+        <div class="actions" style="justify-content:flex-start">
+          <button class="btn-primary" onclick="blingConnect()">Conectar ao Bling</button>
+          <button class="btn-light" onclick="blingSync()">Sincronizar estoque agora</button>
+        </div>
+        <p style="font-size:12px;color:#667;margin-top:12px">
+          "Conectar" abre o Bling para você autorizar o acesso. Depois, "Sincronizar"
+          puxa os produtos e o saldo de estoque do seu Bling para o catálogo.
+          As vendas feitas no app são lançadas de volta no seu Bling automaticamente.
+        </p>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -200,10 +219,13 @@ function showTab(t) {
   document.getElementById('prodTab').classList.toggle('hidden', t !== 'prod');
   document.getElementById('vendTab').classList.toggle('hidden', t !== 'vend');
   document.getElementById('notaTab').classList.toggle('hidden', t !== 'nota');
+  document.getElementById('blingTab').classList.toggle('hidden', t !== 'bling');
   document.getElementById('tabProd').classList.toggle('active', t === 'prod');
   document.getElementById('tabVend').classList.toggle('active', t === 'vend');
   document.getElementById('tabNota').classList.toggle('active', t === 'nota');
+  document.getElementById('tabBling').classList.toggle('active', t === 'bling');
   if (t === 'nota') loadInvoices();
+  if (t === 'bling') loadBling();
 }
 
 // ----- Produtos -----
@@ -402,6 +424,36 @@ async function verXml(chave) {
       xml.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</pre>');
     w.document.title = 'NFC-e ' + chave;
   } catch (e) { msg('notaMsg', e.message, 'err'); }
+}
+
+// ----- Bling -----
+async function loadBling() {
+  try {
+    const s = await api('/admin/bling/status');
+    const el = document.getElementById('blingStatus');
+    if (!s.configurado) {
+      el.innerHTML = '<b style="color:#b26a00">Servidor sem credenciais Bling</b> (configurar BLING_CLIENT_ID/SECRET).';
+    } else if (s.conectado) {
+      el.innerHTML = '<b style="color:#1e7e45">Conectado ao Bling.</b>';
+    } else {
+      el.innerHTML = '<b style="color:#b26a00">Não conectado.</b> Clique em "Conectar ao Bling".';
+    }
+  } catch (e) { msg('blingMsg', e.message, 'err'); }
+}
+async function blingConnect() {
+  try {
+    const r = await api('/admin/bling/connect');
+    window.open(r.url, '_blank');
+    msg('blingMsg', 'Autorize o acesso na aba do Bling e depois clique em "Sincronizar estoque".', 'ok');
+  } catch (e) { msg('blingMsg', e.message, 'err'); }
+}
+async function blingSync() {
+  msg('blingMsg', 'Sincronizando...', 'ok');
+  try {
+    const r = await api('/admin/bling/sync', 'POST');
+    msg('blingMsg', `Sincronizado: ${r.criados} criados, ${r.atualizados} atualizados.`, 'ok');
+    loadProducts();
+  } catch (e) { msg('blingMsg', e.message, 'err'); }
 }
 
 // auto-login se já houver token
