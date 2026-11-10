@@ -62,6 +62,25 @@ dev_dependencies:
   flutter_lints: ^4.0.0
   drift_dev: ^2.15.0
   build_runner: ^2.4.8
+  flutter_launcher_icons: ^0.14.1
+
+# Geração dos ícones do app (rode: dart run flutter_launcher_icons).
+flutter_launcher_icons:
+  android: true
+  ios: true
+  remove_alpha_ios: true
+  image_path: "assets/icon/app_icon.png"
+  adaptive_icon_background: "#1565C0"
+  adaptive_icon_foreground: "assets/icon/app_icon_fg.png"
+  web:
+    generate: true
+    image_path: "assets/icon/app_icon.png"
+  windows:
+    generate: true
+    image_path: "assets/icon/app_icon.png"
+  macos:
+    generate: true
+    image_path: "assets/icon/app_icon.png"
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec

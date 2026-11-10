@@ -463,6 +463,39 @@ Map<String, dynamic>? _authClaims(Request req) {
   return Auth.verifyToken(token);
 }
 
+/// POST /auth/change-password — o próprio vendedor logado troca sua senha.
+/// Body: {senha_atual, senha_nova}. Exige token válido (qualquer papel).
+Future<Response> _changePassword(Request req) async {
+  final claims = _authClaims(req);
+  if (claims == null) return _json(401, {'error': 'Token inválido.'});
+  final sellerId = claims['sub'].toString();
+
+  final body = jsonDecode(await req.readAsString()) as Map<String, dynamic>;
+  final atual = (body['senha_atual'] ?? '').toString();
+  final nova = (body['senha_nova'] ?? '').toString();
+
+  if (nova.length < 6) {
+    return _json(400, {'error': 'A nova senha deve ter ao menos 6 caracteres.'});
+  }
+
+  final rows = await Db.query(
+    'SELECT senha_hash FROM sellers WHERE id = @id AND ativo = true',
+    params: {'id': sellerId},
+  );
+  if (rows.isEmpty) {
+    return _json(404, {'error': 'Usuário não encontrado.'});
+  }
+  if (!Auth.verifyPassword(atual, rows.first['senha_hash'].toString())) {
+    return _json(401, {'error': 'Senha atual incorreta.'});
+  }
+
+  await Db.query(
+    'UPDATE sellers SET senha_hash = @h WHERE id = @id',
+    params: {'h': Auth.hashPassword(nova), 'id': sellerId},
+  );
+  return _json(200, {'status': 'ok'});
+}
+
 /// GET /fiscal/status/<orderId> — status fiscal (SEFAZ) de um pedido do app.
 Future<Response> _fiscalStatus(Request req, String orderId) async {
   final claims = _authClaims(req);
@@ -1145,6 +1178,7 @@ Future<void> main() async {
   final router = Router()
     ..get('/health', (Request req) => _json(200, {'status': 'ok'}))
     ..post('/auth/login', _login)
+    ..post('/auth/change-password', _changePassword)
     ..get('/sync/catalog', _catalog)
     ..post('/sync/vendas', _syncVenda)
     ..get('/fiscal/status/<orderId>', _fiscalStatus)

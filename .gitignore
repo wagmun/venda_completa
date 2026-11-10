@@ -55,3 +55,6 @@ app.*.map.json
 
 # Binário compilado do servidor Dart
 server/bin/server
+
+# Artefatos de build nativo Android
+android/app/.cxx/

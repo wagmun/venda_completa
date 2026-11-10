@@ -59,4 +59,32 @@ class AuthApiService {
       throw Exception('Erro do servidor (${res.statusCode}).');
     }
   }
+
+  /// Troca a senha do vendedor logado. Retorna null em sucesso, ou a mensagem
+  /// de erro do servidor (ex.: senha atual incorreta) para exibir ao usuário.
+  Future<String?> changePassword({
+    required String token,
+    required String senhaAtual,
+    required String senhaNova,
+  }) async {
+    try {
+      final res = await client.post(
+        Uri.parse('$apiBaseUrl/auth/change-password'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({'senha_atual': senhaAtual, 'senha_nova': senhaNova}),
+      );
+      if (res.statusCode == 200) return null;
+      try {
+        final data = jsonDecode(res.body) as Map<String, dynamic>;
+        return (data['error'] ?? 'Erro (${res.statusCode}).').toString();
+      } catch (_) {
+        return 'Erro do servidor (${res.statusCode}).';
+      }
+    } catch (_) {
+      return 'Sem conexão com o servidor.';
+    }
+  }
 }

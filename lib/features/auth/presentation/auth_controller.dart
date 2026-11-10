@@ -55,6 +55,32 @@ class AuthController extends ChangeNotifier {
         _seedService = seedService,
         _webSocketHandler = webSocketHandler;
 
+  /// Troca a senha do vendedor logado. Retorna null em sucesso ou a mensagem
+  /// de erro para exibir. Indisponível no modo demo offline (sem token real).
+  Future<String?> changePassword({
+    required String senhaAtual,
+    required String senhaNova,
+  }) async {
+    final token = await _storage.getToken();
+    if (token == null || token.isEmpty || token == 'token_demo_offline') {
+      return 'Disponível apenas com sessão online (conectado ao servidor).';
+    }
+    return _authApi.changePassword(
+      token: token,
+      senhaAtual: senhaAtual,
+      senhaNova: senhaNova,
+    );
+  }
+
+  /// Encerra a sessão: fecha o tempo real, limpa token/empresa do dispositivo
+  /// e volta ao estado inicial (tela de login). Permite trocar de vendedor.
+  Future<void> logout() async {
+    await _webSocketHandler?.disconnect();
+    await _storage.clearSession();
+    _state = const AuthState();
+    notifyListeners();
+  }
+
   Future<void> login({
     required String email,
     required String password,

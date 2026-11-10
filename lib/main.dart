@@ -19,6 +19,8 @@ import 'features/sales/data/outbox_service.dart';
 import 'features/sales/data/outbox_sync_manager.dart';
 import 'features/sales/data/printer_service.dart';
 import 'features/sales/domain/fiscal_service.dart';
+import 'features/sales/presentation/sales_history_controller.dart';
+import 'features/sales/presentation/sales_history_screen.dart';
 import 'features/cart/presentation/cart_screen.dart';
 
 /// URL base do backend central (Fonte Única da Verdade).
@@ -97,6 +99,13 @@ void main() {
             printerService: printerService,
           ),
         ),
+        ChangeNotifierProvider<SalesHistoryController>(
+          create: (_) => SalesHistoryController(
+            db: db,
+            storage: storage,
+            outboxService: outboxService,
+          ),
+        ),
       ],
       child: const VendaCompletaApp(),
     ),
@@ -120,6 +129,7 @@ class VendaCompletaApp extends StatelessWidget {
         '/': (_) => const LoginScreen(),
         '/catalog': (_) => const CatalogScreen(),
         '/cart': (_) => const CartScreen(),
+        '/sales': (_) => const SalesHistoryScreen(),
       },
     );
   }

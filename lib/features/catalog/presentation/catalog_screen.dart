@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../core/widgets/camera_barcode_scanner_widget.dart';
 import '../../../core/widgets/physical_barcode_scanner_listener.dart';
+import '../../auth/presentation/auth_controller.dart';
 import '../../cart/presentation/cart_controller.dart';
 import 'catalog_controller.dart';
 
@@ -152,6 +153,128 @@ class _CatalogScreenState extends State<CatalogScreen> {
     );
   }
 
+  Future<void> _confirmLogout(BuildContext context) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Sair'),
+        content: const Text('Deseja encerrar a sessão?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Sair'),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true || !context.mounted) return;
+    final navigator = Navigator.of(context);
+    await context.read<AuthController>().logout();
+    navigator.pushNamedAndRemoveUntil('/', (route) => false);
+  }
+
+  Future<void> _showChangePasswordDialog(BuildContext context) async {
+    final atualCtrl = TextEditingController();
+    final novaCtrl = TextEditingController();
+    final confirmaCtrl = TextEditingController();
+    final auth = context.read<AuthController>();
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        String? erro;
+        bool salvando = false;
+        return StatefulBuilder(
+          builder: (ctx, setDialogState) {
+            return AlertDialog(
+              title: const Text('Trocar senha'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: atualCtrl,
+                    obscureText: true,
+                    decoration: const InputDecoration(labelText: 'Senha atual'),
+                  ),
+                  TextField(
+                    controller: novaCtrl,
+                    obscureText: true,
+                    decoration:
+                        const InputDecoration(labelText: 'Nova senha (mín. 6)'),
+                  ),
+                  TextField(
+                    controller: confirmaCtrl,
+                    obscureText: true,
+                    decoration:
+                        const InputDecoration(labelText: 'Confirmar nova senha'),
+                  ),
+                  if (erro != null) ...[
+                    const SizedBox(height: 12),
+                    Text(erro!, style: const TextStyle(color: Colors.red)),
+                  ],
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed:
+                      salvando ? null : () => Navigator.pop(dialogContext),
+                  child: const Text('Cancelar'),
+                ),
+                FilledButton(
+                  onPressed: salvando
+                      ? null
+                      : () async {
+                          if (novaCtrl.text != confirmaCtrl.text) {
+                            setDialogState(
+                                () => erro = 'As senhas não coincidem.');
+                            return;
+                          }
+                          if (novaCtrl.text.length < 6) {
+                            setDialogState(() =>
+                                erro = 'A nova senha deve ter ao menos 6 caracteres.');
+                            return;
+                          }
+                          setDialogState(() {
+                            salvando = true;
+                            erro = null;
+                          });
+                          final messenger = ScaffoldMessenger.of(context);
+                          final navigator = Navigator.of(dialogContext);
+                          final res = await auth.changePassword(
+                            senhaAtual: atualCtrl.text,
+                            senhaNova: novaCtrl.text,
+                          );
+                          if (res == null) {
+                            navigator.pop();
+                            messenger.showSnackBar(const SnackBar(
+                                content: Text('Senha alterada com sucesso.')));
+                          } else {
+                            setDialogState(() {
+                              salvando = false;
+                              erro = res;
+                            });
+                          }
+                        },
+                  child: salvando
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Salvar'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final catalogController = context.watch<CatalogController>();
@@ -187,6 +310,38 @@ class _CatalogScreenState extends State<CatalogScreen> {
               icon: const Icon(Icons.qr_code_scanner),
               tooltip: 'Abrir Câmera',
               onPressed: () => _openCameraScanner(context),
+            ),
+            IconButton(
+              icon: const Icon(Icons.receipt_long),
+              tooltip: 'Minhas vendas',
+              onPressed: () => Navigator.of(context).pushNamed('/sales'),
+            ),
+            PopupMenuButton<String>(
+              tooltip: 'Conta',
+              icon: const Icon(Icons.account_circle_outlined),
+              onSelected: (value) async {
+                if (value == 'senha') {
+                  await _showChangePasswordDialog(context);
+                } else if (value == 'sair') {
+                  await _confirmLogout(context);
+                }
+              },
+              itemBuilder: (_) => const [
+                PopupMenuItem(
+                  value: 'senha',
+                  child: ListTile(
+                    leading: Icon(Icons.password),
+                    title: Text('Trocar senha'),
+                  ),
+                ),
+                PopupMenuItem(
+                  value: 'sair',
+                  child: ListTile(
+                    leading: Icon(Icons.logout),
+                    title: Text('Sair'),
+                  ),
+                ),
+              ],
             ),
             IconButton(
               tooltip: 'Abrir Carrinho',

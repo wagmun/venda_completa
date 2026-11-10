@@ -90,5 +90,15 @@ class SecureStorageService {
   Future<void> commitNfceNumero(int numero) =>
       _store.write(_keyNfceNumero, numero.toString());
 
+  /// Encerra a sessão: remove token, empresa e dados fiscais, mas preserva o
+  /// próximo número de NFC-e (continuidade da numeração do dispositivo).
+  Future<void> clearSession() async {
+    await _store.write(_keyToken, '');
+    await _store.write(_keyTenantId, '');
+    await _store.write(_keyRazao, '');
+    await _store.write(_keyCnpj, '');
+    await _store.write(_keyUf, '');
+  }
+
   Future<void> clearAll() => _store.clearAll();
 }

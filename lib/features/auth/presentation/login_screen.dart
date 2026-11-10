@@ -1,7 +1,8 @@
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'auth_controller.dart'; // Importa o controller e o AuthState
-import 'test_login_picker.dart'; // ⚠️ TESTE — remover antes de produção
+import 'test_login_picker.dart'; // ⚠️ TESTE — só aparece em build debug
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({Key? key}) : super(key: key);
@@ -106,19 +107,20 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
         ),
           ),
-          // ===== INÍCIO ÁREA DE TESTE (REMOVER ANTES DE PRODUÇÃO) =====
-          Positioned(
-            top: 16,
-            left: 16,
-            child: SafeArea(
-              child: TestLoginPicker(
-                onPick: (email, senha) {
-                  _emailController.text = email;
-                  _passwordController.text = senha;
-                },
+          // ===== ÁREA DE TESTE — visível APENAS em build debug =====
+          if (kDebugMode)
+            Positioned(
+              top: 16,
+              left: 16,
+              child: SafeArea(
+                child: TestLoginPicker(
+                  onPick: (email, senha) {
+                    _emailController.text = email;
+                    _passwordController.text = senha;
+                  },
+                ),
               ),
             ),
-          ),
           // ===== FIM ÁREA DE TESTE =====
         ],
       ),
