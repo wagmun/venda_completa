@@ -244,6 +244,9 @@ class _CatalogScreenState extends State<CatalogScreen> {
                   final product = catalogController.products[index];
                   // Cálculo do estoque líquido disponível
                   final estoqueDisponivel = product.qtdFisica - product.qtdReservada;
+                  // Limite de venda: cota offline (se definida) ou o estoque.
+                  final limiteVenda =
+                      product.cotaOffline > 0 ? product.cotaOffline : estoqueDisponivel;
 
                   return Card(
                     margin: const EdgeInsets.symmetric(
@@ -251,12 +254,12 @@ class _CatalogScreenState extends State<CatalogScreen> {
                       vertical: 4.0,
                     ),
                     child: ListTile(
-                      onTap: estoqueDisponivel > 0
+                      onTap: limiteVenda > 0
                           ? () => _showQuantityDialog(
                                 context,
                                 product,
                                 cartController,
-                                estoqueDisponivel.floor(),
+                                limiteVenda.floor(),
                               )
                           : null,
                       leading: CircleAvatar(

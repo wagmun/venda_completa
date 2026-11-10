@@ -93,6 +93,9 @@
           <div><label>Estoque (qtd física)</label><input id="pQtd" type="number" step="1"></div>
         </div>
         <div class="row">
+          <div><label>Cota offline (venda sem internet; 0 = usa o estoque)</label><input id="pCota" type="number" step="1" value="0"></div>
+        </div>
+        <div class="row">
           <div><label>NCM</label><input id="pNcm" value="00000000"></div>
           <div><label>Unidade</label><input id="pUn" value="UN"></div>
         </div>
@@ -252,6 +255,7 @@ function editProduct(p) {
   document.getElementById('pDesc').value = p.descricao;
   document.getElementById('pPreco').value = p.preco_venda;
   document.getElementById('pQtd').value = p.qtd_fisica;
+  document.getElementById('pCota').value = p.cota_offline || 0;
   document.getElementById('pNcm').value = p.ncm || '00000000';
   document.getElementById('pUn').value = p.unidade_medida || 'UN';
   document.getElementById('prodFormTitle').textContent = 'Editar produto';
@@ -260,6 +264,7 @@ function editProduct(p) {
 }
 function resetProdForm() {
   ['pId','pSku','pEan','pDesc','pPreco','pQtd'].forEach(i => document.getElementById(i).value = '');
+  document.getElementById('pCota').value = '0';
   document.getElementById('pNcm').value = '00000000';
   document.getElementById('pUn').value = 'UN';
   document.getElementById('pSku').disabled = false;
@@ -283,6 +288,7 @@ async function saveProduct() {
     descricao: document.getElementById('pDesc').value.trim(),
     preco_venda: parseFloat(document.getElementById('pPreco').value) || 0,
     qtd_fisica: parseFloat(document.getElementById('pQtd').value) || 0,
+    cota_offline: parseFloat(document.getElementById('pCota').value) || 0,
     ncm: document.getElementById('pNcm').value.trim(),
     unidade_medida: document.getElementById('pUn').value.trim(),
   };

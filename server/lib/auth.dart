@@ -1,3 +1,4 @@
+import 'package:bcrypt/bcrypt.dart';
 import 'package:dart_jsonwebtoken/dart_jsonwebtoken.dart';
 
 /// Assinatura e verificação de JWT para o backend.
@@ -31,9 +32,20 @@ class Auth {
     }
   }
 
-  /// Validação de senha no modo demo. O seed guarda o hash placeholder
-  /// 'demo$<senha>'. Em produção, trocar por bcrypt/argon2.
+  /// Verifica a senha. Suporta hash bcrypt (produção) e o esquema legado
+  /// 'demo$<senha>' (seed/dados antigos), para não quebrar logins existentes.
   static bool verifyPassword(String plain, String storedHash) {
+    if (storedHash.startsWith(r'$2')) {
+      try {
+        return BCrypt.checkpw(plain, storedHash);
+      } catch (_) {
+        return false;
+      }
+    }
     return storedHash == 'demo\$$plain';
   }
+
+  /// Gera o hash bcrypt de uma senha (para novos cadastros).
+  static String hashPassword(String plain) =>
+      BCrypt.hashpw(plain, BCrypt.gensalt());
 }

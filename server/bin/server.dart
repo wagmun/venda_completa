@@ -503,7 +503,8 @@ Future<Response> _adminListProducts(Request req) async {
   final rows = await Db.query(
     '''
     SELECT p.id, p.sku, p.codigo_ean, p.descricao, p.ncm, p.cest,
-           p.unidade_medida, p.preco_venda, i.qtd_fisica, i.qtd_reservada
+           p.unidade_medida, p.preco_venda, i.qtd_fisica, i.qtd_reservada,
+           i.cota_offline
     FROM products p JOIN inventory i ON i.product_id = p.id
     WHERE p.tenant_id = @t AND p.ativo = true ORDER BY p.descricao
     ''',
@@ -520,6 +521,7 @@ Future<Response> _adminListProducts(Request req) async {
         'preco_venda': _toDouble(r['preco_venda']),
         'qtd_fisica': _toDouble(r['qtd_fisica']),
         'qtd_reservada': _toDouble(r['qtd_reservada']),
+        'cota_offline': _toDouble(r['cota_offline']),
       }).toList());
 }
 
@@ -558,10 +560,15 @@ Future<Response> _adminCreateProduct(Request req) async {
       final pid = res.first.first.toString();
       await tx.execute(
         Sql.named('''
-          INSERT INTO inventory (tenant_id, product_id, qtd_fisica)
-          VALUES (@t, @p, @q)
+          INSERT INTO inventory (tenant_id, product_id, qtd_fisica, cota_offline)
+          VALUES (@t, @p, @q, @cota)
         '''),
-        parameters: {'t': tenantId, 'p': pid, 'q': _toDouble(b['qtd_fisica'])},
+        parameters: {
+          't': tenantId,
+          'p': pid,
+          'q': _toDouble(b['qtd_fisica']),
+          'cota': _toDouble(b['cota_offline']),
+        },
       );
     });
   } on ServerException catch (e) {
@@ -601,13 +608,21 @@ Future<Response> _adminUpdateProduct(Request req, String id) async {
           'un': (b['unidade_medida'] ?? 'UN').toString(),
         },
       );
-      if (b['qtd_fisica'] != null) {
+      if (b['qtd_fisica'] != null || b['cota_offline'] != null) {
         await tx.execute(
           Sql.named('''
-            UPDATE inventory SET qtd_fisica = @q, updated_at = CURRENT_TIMESTAMP
+            UPDATE inventory SET
+              qtd_fisica = COALESCE(@q, qtd_fisica),
+              cota_offline = COALESCE(@cota, cota_offline),
+              updated_at = CURRENT_TIMESTAMP
             WHERE product_id = @id AND tenant_id = @t
           '''),
-          parameters: {'q': _toDouble(b['qtd_fisica']), 'id': id, 't': tenantId},
+          parameters: {
+            'q': b['qtd_fisica'] != null ? _toDouble(b['qtd_fisica']) : null,
+            'cota': b['cota_offline'] != null ? _toDouble(b['cota_offline']) : null,
+            'id': id,
+            't': tenantId,
+          },
         );
       }
     });
@@ -822,6 +837,56 @@ Future<Response> _adminInvoiceXml(Request req, String chave) async {
   );
 }
 
+/// POST /provision — cria uma empresa (tenant) + admin. Ação da PLATAFORMA,
+/// protegida pela chave em PLATFORM_KEY (header X-Platform-Key).
+Future<Response> _provision(Request req) async {
+  final expected = Platform.environment['PLATFORM_KEY'] ?? '';
+  final key = req.headers['x-platform-key'] ?? '';
+  if (expected.isEmpty || key != expected) {
+    return _json(403, {'error': 'Chave de plataforma inválida.'});
+  }
+  final b = jsonDecode(await req.readAsString()) as Map<String, dynamic>;
+  final razao = (b['razao_social'] ?? '').toString().trim();
+  final cnpj = (b['cnpj'] ?? '').toString().replaceAll(RegExp(r'\D'), '');
+  final email = (b['admin_email'] ?? '').toString().trim().toLowerCase();
+  final senha = (b['admin_senha'] ?? '').toString();
+  if (razao.isEmpty || cnpj.isEmpty || email.isEmpty || senha.isEmpty) {
+    return _json(400, {'error': 'razao_social, cnpj, admin_email e admin_senha são obrigatórios.'});
+  }
+  try {
+    final tenantId = await Db.connection.runTx((tx) async {
+      final t = await tx.execute(
+        Sql.named('''
+          INSERT INTO tenants (razao_social, nome_fantasia, cnpj, inscricao_estadual, uf)
+          VALUES (@r, @nf, @c, @ie, @uf) RETURNING id
+        '''),
+        parameters: {
+          'r': razao,
+          'nf': (b['nome_fantasia'] ?? razao).toString(),
+          'c': cnpj,
+          'ie': (b['inscricao_estadual'] ?? 'ISENTO').toString(),
+          'uf': (b['uf'] ?? 'SP').toString(),
+        },
+      );
+      final tid = t.first[0].toString();
+      await tx.execute(
+        Sql.named('''
+          INSERT INTO sellers (tenant_id, nome, email, cpf, senha_hash, role)
+          VALUES (@t, 'Administrador', @e, '00000000000', @h, 'admin')
+        '''),
+        parameters: {'t': tid, 'e': email, 'h': Auth.hashPassword(senha)},
+      );
+      return tid;
+    });
+    return _json(201, {'status': 'created', 'tenant_id': tenantId});
+  } on ServerException catch (e) {
+    if (e.code == '23505') return _json(409, {'error': 'CNPJ ou e-mail já cadastrado.'});
+    return _json(500, {'error': e.message});
+  } catch (e) {
+    return _json(500, {'error': '$e'});
+  }
+}
+
 /// GET /admin/bling/connect — devolve a URL de autorização OAuth do Bling.
 Future<Response> _blingConnect(Request req) async {
   final claims = _adminClaims(req);
@@ -964,7 +1029,7 @@ Future<Response> _adminUpdateSeller(Request req, String id) async {
         'email': (b['email'] ?? '').toString().trim().toLowerCase(),
         'cpf': (b['cpf'] ?? '').toString(),
         'ativo': b['ativo'] == null ? true : b['ativo'] == true,
-        if (senha.isNotEmpty) 'hash': 'demo\$$senha',
+        if (senha.isNotEmpty) 'hash': Auth.hashPassword(senha),
       },
     );
   } on ServerException catch (e) {
@@ -1033,7 +1098,7 @@ Future<Response> _adminCreateSeller(Request req) async {
         'nome': nome,
         'email': email,
         'cpf': (b['cpf'] ?? '00000000000').toString(),
-        'hash': 'demo\$$senha', // DEV: mesmo esquema do seed; trocar por bcrypt
+        'hash': Auth.hashPassword(senha),
         'ini': (b['nosso_numero_inicio'] ?? 1000),
         'fim': (b['nosso_numero_fim'] ?? 1999),
       },
@@ -1100,7 +1165,8 @@ Future<void> main() async {
     ..get('/admin/bling/connect', _blingConnect)
     ..get('/admin/bling/status', _blingStatus)
     ..post('/admin/bling/sync', _blingSync)
-    ..get('/bling/callback', _blingCallback);
+    ..get('/bling/callback', _blingCallback)
+    ..post('/provision', _provision);
 
   final handler = const Pipeline()
       .addMiddleware(logRequests())
