@@ -28,5 +28,9 @@
 	<string>MainMenu</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Usamos a câmera para ler códigos de barras dos produtos.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Usamos a rede local para localizar e imprimir em impressoras Wi-Fi.</string>
 </dict>
 </plist>
