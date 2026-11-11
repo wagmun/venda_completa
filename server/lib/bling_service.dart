@@ -138,6 +138,41 @@ class BlingService {
     }
   }
 
+  /// Lista as naturezas de operação ativas do Bling (id + descrição).
+  Future<List<Map<String, dynamic>>> listarNaturezas(String accessToken) async {
+    final res = await _send(
+      'GET',
+      '$_apiBase/naturezas-operacoes?situacao=1',
+      headers: {'Authorization': 'Bearer $accessToken'},
+    );
+    final j = jsonDecode(res) as Map<String, dynamic>;
+    final data = (j['data'] as List?) ?? const [];
+    return data
+        .map<Map<String, dynamic>>((e) => {
+              'id': (e as Map)['id'],
+              'descricao': (e['descricao'] ?? '').toString(),
+            })
+        .toList();
+  }
+
+  /// Lista as formas de pagamento do Bling (id + descrição).
+  Future<List<Map<String, dynamic>>> listarFormasPagamento(
+      String accessToken) async {
+    final res = await _send(
+      'GET',
+      '$_apiBase/formas-pagamentos',
+      headers: {'Authorization': 'Bearer $accessToken'},
+    );
+    final j = jsonDecode(res) as Map<String, dynamic>;
+    final data = (j['data'] as List?) ?? const [];
+    return data
+        .map<Map<String, dynamic>>((e) => {
+              'id': (e as Map)['id'],
+              'descricao': (e['descricao'] ?? '').toString(),
+            })
+        .toList();
+  }
+
   /// Cria a NF-e modelo 55 no Bling (situação pendente). Retorna o id da nota.
   /// [naturezaOperacaoId] e [lojaId] vêm da conta Bling do cliente (env/config).
   Future<int> createNfe(

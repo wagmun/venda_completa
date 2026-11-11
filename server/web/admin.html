@@ -166,6 +166,30 @@
           As vendas feitas no app são lançadas de volta no seu Bling automaticamente.
         </p>
       </div>
+      <div class="card">
+        <h2>Configuração fiscal (NF-e 55)</h2>
+        <div id="fiscalMsg"></div>
+        <p style="font-size:13px;color:#667;margin:6px 0 12px">
+          Define como a NF-e modelo 55 é emitida no Bling a cada venda. Escolha e salve.
+        </p>
+        <div class="row">
+          <div>
+            <label>Natureza de operação (define o CFOP)</label>
+            <select id="fNatureza"><option value="">Carregue a lista…</option></select>
+          </div>
+          <div>
+            <label>Forma de pagamento do boleto</label>
+            <select id="fForma"><option value="">Carregue a lista…</option></select>
+          </div>
+        </div>
+        <div class="row">
+          <div><label>Loja (id — opcional, em branco usa a padrão)</label><input id="fLoja" type="number"></div>
+        </div>
+        <div class="actions" style="justify-content:flex-start">
+          <button class="btn-light" onclick="loadFiscalConfig()">Carregar do Bling</button>
+          <button class="btn-primary" onclick="saveFiscalConfig()">Salvar</button>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -460,6 +484,39 @@ async function blingSync() {
     msg('blingMsg', `Sincronizado: ${r.criados} criados, ${r.atualizados} atualizados.`, 'ok');
     loadProducts();
   } catch (e) { msg('blingMsg', e.message, 'err'); }
+}
+
+function fillSelect(id, itens, selId) {
+  const sel = document.getElementById(id);
+  sel.innerHTML = '<option value="">— selecione —</option>';
+  for (const it of itens) {
+    const o = document.createElement('option');
+    o.value = it.id;
+    o.textContent = `${it.descricao} (#${it.id})`;
+    if (selId != null && String(it.id) === String(selId)) o.selected = true;
+    sel.appendChild(o);
+  }
+}
+async function loadFiscalConfig() {
+  msg('fiscalMsg', 'Carregando do Bling...', 'ok');
+  try {
+    const r = await api('/admin/bling/fiscal-config');
+    const c = r.config || {};
+    fillSelect('fNatureza', r.naturezas || [], c.natureza_operacao_id);
+    fillSelect('fForma', r.formas_pagamento || [], c.forma_pagamento_boleto_id);
+    document.getElementById('fLoja').value = c.loja_id != null ? c.loja_id : '';
+    msg('fiscalMsg', 'Listas carregadas. Escolha e salve.', 'ok');
+  } catch (e) { msg('fiscalMsg', e.message, 'err'); }
+}
+async function saveFiscalConfig() {
+  try {
+    await api('/admin/bling/fiscal-config', 'POST', {
+      natureza_operacao_id: document.getElementById('fNatureza').value,
+      forma_pagamento_boleto_id: document.getElementById('fForma').value,
+      loja_id: document.getElementById('fLoja').value,
+    });
+    msg('fiscalMsg', 'Configuração fiscal salva.', 'ok');
+  } catch (e) { msg('fiscalMsg', e.message, 'err'); }
 }
 
 // auto-login se já houver token

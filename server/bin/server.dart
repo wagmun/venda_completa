@@ -1006,6 +1006,71 @@ Future<Response> _blingStatus(Request req) async {
   });
 }
 
+/// GET /admin/bling/fiscal-config — opções do Bling (naturezas, formas de
+/// pagamento) + a configuração fiscal já salva para a empresa.
+Future<Response> _blingFiscalConfig(Request req) async {
+  final claims = _adminClaims(req);
+  if (claims == null) return _json(403, {'error': 'Acesso restrito ao administrador.'});
+  final tenantId = claims['tenant_id'].toString();
+  final token = await _blingToken(tenantId);
+  if (token == null) return _json(400, {'error': 'Bling não conectado para esta empresa.'});
+
+  List<Map<String, dynamic>> naturezas = const [];
+  List<Map<String, dynamic>> formas = const [];
+  try {
+    naturezas = await _bling.listarNaturezas(token);
+    formas = await _bling.listarFormasPagamento(token);
+  } catch (e) {
+    return _json(502, {'error': 'Falha ao consultar o Bling: $e'});
+  }
+
+  final cfg = await Db.query(
+    '''SELECT bling_natureza_operacao_id, bling_loja_id,
+              bling_forma_pagamento_boleto_id
+       FROM tenants WHERE id = @t''',
+    params: {'t': tenantId},
+  );
+  final c = cfg.isNotEmpty ? cfg.first : const {};
+  return _json(200, {
+    'naturezas': naturezas,
+    'formas_pagamento': formas,
+    'config': {
+      'natureza_operacao_id': c['bling_natureza_operacao_id'],
+      'loja_id': c['bling_loja_id'],
+      'forma_pagamento_boleto_id': c['bling_forma_pagamento_boleto_id'],
+    },
+  });
+}
+
+/// POST /admin/bling/fiscal-config — salva os 3 ids fiscais na empresa.
+Future<Response> _blingSaveFiscalConfig(Request req) async {
+  final claims = _adminClaims(req);
+  if (claims == null) return _json(403, {'error': 'Acesso restrito ao administrador.'});
+  final tenantId = claims['tenant_id'].toString();
+  final b = jsonDecode(await req.readAsString()) as Map<String, dynamic>;
+  int? parse(dynamic v) {
+    final s = (v ?? '').toString().trim();
+    return s.isEmpty ? null : int.tryParse(s);
+  }
+
+  await Db.connection.execute(
+    Sql.named('''
+      UPDATE tenants SET
+        bling_natureza_operacao_id = @n,
+        bling_loja_id = @l,
+        bling_forma_pagamento_boleto_id = @f
+      WHERE id = @t
+    '''),
+    parameters: {
+      'n': parse(b['natureza_operacao_id']),
+      'l': parse(b['loja_id']),
+      'f': parse(b['forma_pagamento_boleto_id']),
+      't': tenantId,
+    },
+  );
+  return _json(200, {'status': 'saved'});
+}
+
 /// POST /admin/bling/sync — puxa produtos+estoque do Bling para o catálogo.
 Future<Response> _blingSync(Request req) async {
   final claims = _adminClaims(req);
@@ -1240,6 +1305,8 @@ Future<void> main() async {
     ..get('/admin/invoices/<chave>/xml', _adminInvoiceXml)
     ..get('/admin/bling/connect', _blingConnect)
     ..get('/admin/bling/status', _blingStatus)
+    ..get('/admin/bling/fiscal-config', _blingFiscalConfig)
+    ..post('/admin/bling/fiscal-config', _blingSaveFiscalConfig)
     ..post('/admin/bling/sync', _blingSync)
     ..get('/bling/callback', _blingCallback)
     ..post('/provision', _provision);
