@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:venda_completa/core/database/app_database.dart';
 import 'package:venda_completa/features/sales/data/danfe_pdf_builder.dart';
 import 'package:venda_completa/core/security/secure_storage_service.dart';
@@ -8,7 +9,6 @@ import 'package:venda_completa/features/cart/domain/cart_item.dart';
 import 'package:venda_completa/features/sales/data/outbox_service.dart';
 import 'package:venda_completa/features/sales/data/printer_service.dart';
 import 'package:venda_completa/features/sales/domain/danfe_escpos_builder.dart';
-import 'package:venda_completa/features/sales/domain/danfe_text_builder.dart';
 import 'package:venda_completa/features/sales/domain/fiscal_service.dart';
 
 class CartController extends ChangeNotifier {
@@ -32,10 +32,16 @@ class CartController extends ChangeNotifier {
   String? _pendingPayment;
   FiscalResult? get pendingFiscal => _pendingFiscal;
 
-  // Retorno da transmissão à SEFAZ da última venda.
+  // Retorno da emissão da NF-e 55 (via Bling) da última venda.
   String _transmissionStatus = '';
   String get transmissionStatus => _transmissionStatus;
-  bool get lastSaleAuthorized => _transmissionStatus.startsWith('AUTORIZADA');
+  bool get lastSaleAuthorized => _transmissionStatus.contains('AUTORIZADA');
+
+  // Chave de acesso e link do DANFE da NF-e 55 emitida no servidor.
+  String? _lastChaveNfe;
+  String? _lastDanfeLink;
+  String? get lastChaveNfe => _lastChaveNfe;
+  String? get lastDanfeLink => _lastDanfeLink;
 
   // DANFE a exibir: versão autorizada (c/ protocolo) se já autorizada; senão a prévia.
   String? _authorizedPreview;
@@ -43,11 +49,22 @@ class CartController extends ChangeNotifier {
 
   String? _lastProtocolo;
 
-  /// Gera o PDF do DANFE da última venda (para impressão via sistema).
+  /// Gera o PDF do comprovante da última venda (para impressão via sistema).
   Future<Uint8List?> buildLastDanfePdf() async {
     final f = _lastFiscal;
     if (f == null) return null;
     return DanfePdfBuilder.build(f, protocolo: _lastProtocolo);
+  }
+
+  /// Baixa o PDF do DANFE da NF-e 55 (link do Bling), para abrir/imprimir.
+  Future<Uint8List?> fetchDanfePdfFromLink() async {
+    final link = _lastDanfeLink;
+    if (link == null || link.isEmpty) return null;
+    try {
+      final res = await http.get(Uri.parse(link));
+      if (res.statusCode == 200) return res.bodyBytes;
+    } catch (_) {}
+    return null;
   }
 
   final List<CartItem> _items = [];
@@ -163,35 +180,29 @@ class CartController extends ChangeNotifier {
       _lastFiscal = _pendingFiscal;
       _generateReceiptText(_pendingPayment!);
       _items.clear();
-      // Transmite e consulta o status fiscal, para dar retorno ao vendedor.
-      _transmissionStatus = 'Transmitindo à SEFAZ...';
+      // Emite a NF-e 55 pelo Bling (no servidor) e consulta o status.
+      _transmissionStatus = 'Emitindo NF-e 55 pelo Bling...';
+      _lastChaveNfe = null;
+      _lastDanfeLink = null;
       try {
         await _outboxService?.processPending();
         final st = await _outboxService?.fetchFiscalStatus(orderId);
         final status = st?['status_sefaz'];
+        _lastChaveNfe = (st?['chave_acesso'])?.toString();
+        _lastDanfeLink = (st?['link_danfe'])?.toString();
         if (status == 'AUTORIZADO') {
-          _lastProtocolo = st!['protocolo']?.toString();
-          _transmissionStatus = 'AUTORIZADA · protocolo ${st['protocolo']}';
-          // Regera o DANFE no estado AUTORIZADO (sem aviso de contingência).
-          final f = _lastFiscal;
-          if (f != null) {
-            _authorizedPreview = DanfeTextBuilder.build(
-              razaoSocial: f.razaoSocial,
-              cnpj: f.cnpj,
-              itens: f.itens,
-              valorTotal: f.valorTotal,
-              formaPagamento: f.formaPagamento,
-              chaveAcesso: f.chaveAcesso,
-              serie: f.serie,
-              numero: f.numero,
-              isContingencia: false,
-              protocolo: st['protocolo']?.toString(),
-            );
-          }
+          _lastProtocolo = st!['chave_acesso']?.toString();
+          _transmissionStatus = 'NF-e 55 AUTORIZADA';
         } else if (status == 'REJEITADO') {
-          _transmissionStatus = 'REJEITADA pela SEFAZ';
+          _transmissionStatus =
+              'NF-e 55 REJEITADA${st?['motivo'] != null && '${st!['motivo']}'.isNotEmpty ? ' · ${st['motivo']}' : ''}';
+        } else if (status == 'ERRO') {
+          _transmissionStatus =
+              'Falha ao emitir no Bling${st?['motivo'] != null && '${st!['motivo']}'.isNotEmpty ? ' · ${st['motivo']}' : ''}';
+        } else if (status == 'PROCESSANDO') {
+          _transmissionStatus = 'NF-e 55 em processamento na SEFAZ';
         } else {
-          _transmissionStatus = 'Pendente — será transmitida ao reconectar';
+          _transmissionStatus = 'Pendente — será emitida ao reconectar';
         }
       } catch (_) {
         _transmissionStatus = 'Pendente — sem conexão com o servidor';
@@ -218,6 +229,7 @@ class CartController extends ChangeNotifier {
     PrinterConnection connection = PrinterConnection.bluetooth,
     String? host,
     int? port,
+    String? btMac,
   }) async {
     final fiscal = _lastFiscal;
     if (fiscal == null || _printerService == null) return false;
@@ -226,8 +238,17 @@ class CartController extends ChangeNotifier {
       connection: connection,
       host: host,
       port: port,
+      btMac: btMac,
     );
   }
+
+  /// Bluetooth ligado no aparelho.
+  Future<bool> bluetoothEnabled() async =>
+      _printerService?.bluetoothEnabled() ?? Future.value(false);
+
+  /// Impressoras Bluetooth pareadas no sistema.
+  Future<List<BtPrinter>> pairedBluetoothPrinters() async =>
+      _printerService?.pairedBluetoothPrinters() ?? Future.value(const []);
 
   void _generateReceiptText(String paymentMethod) {
     final buffer = StringBuffer();

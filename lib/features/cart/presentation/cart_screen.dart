@@ -22,11 +22,17 @@ class CartScreen extends StatelessWidget {
         var procurando = false;
         var manual = false;
         final ipCtrl = TextEditingController(text: '192.168.0.100');
+        // Bluetooth.
+        List<BtPrinter>? btPrinters;
+        var btCarregando = false;
+        var btDesligado = false;
 
-        Future<void> imprimir(PrinterConnection conn, {String? host, int? port}) async {
+        Future<void> imprimir(PrinterConnection conn,
+            {String? host, int? port, String? btMac}) async {
           final messenger = ScaffoldMessenger.of(context);
           Navigator.pop(dc);
-          final ok = await controller.printLastDanfe(connection: conn, host: host, port: port);
+          final ok = await controller.printLastDanfe(
+              connection: conn, host: host, port: port, btMac: btMac);
           messenger.showSnackBar(SnackBar(
             duration: Duration(seconds: ok ? 2 : 5),
             content: Text(ok
@@ -44,6 +50,68 @@ class CartScreen extends StatelessWidget {
                     procurando = false;
                     encontradas = r;
                   }));
+            }
+
+            // Carrega impressoras Bluetooth pareadas ao abrir.
+            if (btPrinters == null && !btCarregando) {
+              btCarregando = true;
+              () async {
+                final ligado = await controller.bluetoothEnabled();
+                final lista =
+                    ligado ? await controller.pairedBluetoothPrinters() : <BtPrinter>[];
+                setLocal(() {
+                  btCarregando = false;
+                  btDesligado = !ligado;
+                  btPrinters = lista;
+                });
+              }();
+            }
+
+            Widget bluetoothCorpo;
+            if (btCarregando) {
+              bluetoothCorpo = const Row(children: [
+                SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+                SizedBox(width: 10),
+                Expanded(child: Text('Procurando impressoras Bluetooth...')),
+              ]);
+            } else if (btDesligado) {
+              bluetoothCorpo = const Text(
+                'Bluetooth desligado. Ligue o Bluetooth do aparelho.',
+                style: TextStyle(fontSize: 12, color: Colors.grey),
+              );
+            } else if ((btPrinters ?? []).isEmpty) {
+              bluetoothCorpo = Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Text(
+                    'Nenhuma impressora pareada. Pareie a impressora nas configurações Bluetooth do Android.',
+                    style: TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
+                  TextButton.icon(
+                    icon: const Icon(Icons.refresh),
+                    label: const Text('Procurar de novo'),
+                    onPressed: () => setLocal(() {
+                      btPrinters = null;
+                      btDesligado = false;
+                    }),
+                  ),
+                ],
+              );
+            } else {
+              bluetoothCorpo = Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  ...btPrinters!.map((p) => ListTile(
+                        dense: true,
+                        leading: const Icon(Icons.bluetooth),
+                        title: Text(p.name.isEmpty ? 'Impressora' : p.name),
+                        subtitle: Text(p.mac),
+                        onTap: () => imprimir(PrinterConnection.bluetooth, btMac: p.mac),
+                      )),
+                ],
+              );
             }
 
             Widget corpo;
@@ -107,7 +175,8 @@ class CartScreen extends StatelessWidget {
               title: const Text('Imprimir DANFE'),
               content: SizedBox(
                 width: 320,
-                child: Column(
+                child: SingleChildScrollView(
+                  child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
@@ -127,11 +196,17 @@ class CartScreen extends StatelessWidget {
                     const Text('Para impressora laser/comum (ex.: HP LaserJet).',
                         style: TextStyle(fontSize: 11, color: Colors.grey)),
                     const Divider(height: 20),
+                    const Text('Impressora térmica Bluetooth (cupom):',
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                    const SizedBox(height: 6),
+                    bluetoothCorpo,
+                    const Divider(height: 20),
                     const Text('Impressora térmica de rede (cupom):',
                         style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                     const SizedBox(height: 6),
                     corpo,
                   ],
+                ),
                 ),
               ),
               actions: [
@@ -152,10 +227,10 @@ class CartScreen extends StatelessWidget {
       builder: (dc) {
         final autorizada = controller.lastSaleAuthorized;
         final statusCor = autorizada ? const Color(0xFF1E7E45) : const Color(0xFFB26A00);
+        final chave = controller.lastChaveNfe;
+        final temDanfe = (controller.lastDanfeLink ?? '').isNotEmpty;
         return AlertDialog(
-          title: Text(autorizada
-              ? 'NFC-e AUTORIZADA'
-              : 'DANFE — pré-nota (não transmitida)'),
+          title: Text(autorizada ? 'NF-e 55 AUTORIZADA' : 'NF-e 55'),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -183,6 +258,12 @@ class CartScreen extends StatelessWidget {
                     ],
                   ),
                 ),
+                if (chave != null && chave.isNotEmpty) ...[
+                  const Text('Chave de acesso:', style: TextStyle(fontSize: 11, color: Colors.grey)),
+                  SelectableText(chave,
+                      style: const TextStyle(fontFamily: 'monospace', fontSize: 12)),
+                  const SizedBox(height: 10),
+                ],
                 Container(
                   padding: const EdgeInsets.all(12),
                   color: const Color(0xFFF5F5F5),
@@ -195,10 +276,25 @@ class CartScreen extends StatelessWidget {
             ),
           ),
           actions: [
+            if (temDanfe)
+              TextButton.icon(
+                icon: const Icon(Icons.picture_as_pdf),
+                label: const Text('Abrir DANFE'),
+                onPressed: () async {
+                  final messenger = ScaffoldMessenger.of(context);
+                  final pdf = await controller.fetchDanfePdfFromLink();
+                  if (pdf != null) {
+                    await Printing.layoutPdf(onLayout: (_) async => pdf, name: 'DANFE NF-e 55');
+                  } else {
+                    messenger.showSnackBar(const SnackBar(
+                        content: Text('Não foi possível baixar o DANFE agora.')));
+                  }
+                },
+              ),
             if (controller.printerAvailable)
               TextButton.icon(
                 icon: const Icon(Icons.print),
-                label: const Text('Imprimir'),
+                label: const Text('Comprovante'),
                 onPressed: () => _showPrinterOptions(context, controller),
               ),
             ElevatedButton.icon(
@@ -288,7 +384,7 @@ class CartScreen extends StatelessWidget {
       barrierDismissible: false,
       builder: (previewContext) {
         return AlertDialog(
-          title: const Text('Confira o DANFE antes de emitir'),
+          title: const Text('Conferir venda antes de emitir NF-e 55'),
           content: SingleChildScrollView(
             child: Container(
               padding: const EdgeInsets.all(12),
@@ -309,9 +405,7 @@ class CartScreen extends StatelessWidget {
             ),
             ElevatedButton.icon(
               icon: const Icon(Icons.check),
-              label: Text(controller.printerAvailable
-                  ? 'Confirmar e imprimir'
-                  : 'Confirmar venda'),
+              label: const Text('Confirmar e emitir NF-e 55'),
               onPressed: () async {
                 Navigator.pop(previewContext);
                 final ok = await controller.confirmSale();

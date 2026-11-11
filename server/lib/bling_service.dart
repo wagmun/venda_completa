@@ -117,6 +117,105 @@ class BlingService {
     );
   }
 
+  /// Busca o contato (destinatário) no Bling pelo documento (CPF/CNPJ).
+  /// Retorna o mapa do contato (com id, ie, endereço) ou null se não achar.
+  Future<Map<String, dynamic>?> buscarContato(
+      String accessToken, String documento) async {
+    final doc = documento.replaceAll(RegExp(r'[^0-9]'), '');
+    if (doc.isEmpty) return null;
+    try {
+      final res = await _send(
+        'GET',
+        '$_apiBase/contatos?numeroDocumento=$doc',
+        headers: {'Authorization': 'Bearer $accessToken'},
+      );
+      final j = jsonDecode(res) as Map<String, dynamic>;
+      final data = (j['data'] as List?) ?? const [];
+      if (data.isEmpty) return null;
+      return data.first as Map<String, dynamic>;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Cria a NF-e modelo 55 no Bling (situação pendente). Retorna o id da nota.
+  /// [naturezaOperacaoId] e [lojaId] vêm da conta Bling do cliente (env/config).
+  Future<int> createNfe(
+    String accessToken, {
+    required Map<String, dynamic> destinatario, // nome, tipoPessoa, numeroDocumento, ie, endereco
+    required List<Map<String, dynamic>> itens, // codigo, descricao, unidade, quantidade, valor, classificacaoFiscal
+    required List<Map<String, dynamic>> parcelas, // data, valor, formaPagamento:{id}
+    int? naturezaOperacaoId,
+    int? lojaId,
+    String? observacoes,
+  }) async {
+    final payload = <String, dynamic>{
+      'tipo': 1, // saída
+      'finalidade': 1, // normal
+      'contato': destinatario,
+      'itens': itens,
+      'parcelas': parcelas,
+      if (naturezaOperacaoId != null) 'naturezaOperacao': {'id': naturezaOperacaoId},
+      if (lojaId != null) 'loja': {'id': lojaId},
+      if (observacoes != null && observacoes.isNotEmpty) 'observacoes': observacoes,
+    };
+    final res = await _send(
+      'POST',
+      '$_apiBase/nfe',
+      headers: {
+        'Authorization': 'Bearer $accessToken',
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode(payload),
+    );
+    final j = jsonDecode(res) as Map<String, dynamic>;
+    final id = (j['data']?['id']);
+    final parsed = id is int ? id : int.tryParse('$id');
+    if (parsed == null) {
+      throw HttpException('Bling createNfe: id da nota ausente -> $res');
+    }
+    return parsed;
+  }
+
+  /// Envia a NF-e à SEFAZ (autoriza). Retorna o corpo da resposta.
+  Future<Map<String, dynamic>> enviarNfe(String accessToken, int idNota) async {
+    final res = await _send(
+      'POST',
+      '$_apiBase/nfe/$idNota/enviar',
+      headers: {'Authorization': 'Bearer $accessToken'},
+    );
+    return jsonDecode(res) as Map<String, dynamic>;
+  }
+
+  /// Consulta a NF-e no Bling. Normaliza situação/chave/link do DANFE.
+  Future<Map<String, dynamic>> getNfe(String accessToken, int idNota) async {
+    final res = await _send(
+      'GET',
+      '$_apiBase/nfe/$idNota',
+      headers: {'Authorization': 'Bearer $accessToken'},
+    );
+    final j = jsonDecode(res) as Map<String, dynamic>;
+    final d = (j['data'] as Map<String, dynamic>?) ?? const {};
+    final situacao = int.tryParse('${d['situacao'] ?? 0}') ?? 0;
+    return {
+      'situacao': situacao,
+      'status': _situacaoNfe(situacao),
+      'chave_acesso': (d['chaveAcesso'] ?? '').toString(),
+      'numero': (d['numero'] ?? '').toString(),
+      'serie': (d['serie'] ?? '').toString(),
+      'link_danfe': (d['linkDanfe'] ?? d['linkPDF'] ?? '').toString(),
+      'motivo': (d['xmlMotivo'] ?? d['motivo'] ?? '').toString(),
+    };
+  }
+
+  /// Mapeia a situação numérica da NF-e do Bling para o status do nosso domínio.
+  static String _situacaoNfe(int s) => switch (s) {
+        5 || 6 || 7 => 'AUTORIZADO', // autorizada / danfe emitida / registrada
+        4 => 'REJEITADO',
+        2 => 'CANCELADO',
+        _ => 'PROCESSANDO', // 1 pendente, 3 aguardando recibo, etc.
+      };
+
   Future<String> _send(String method, String url,
       {Map<String, String>? headers, String? body}) async {
     final client = HttpClient();

@@ -5,6 +5,12 @@
     <!-- Leitor de código de barras por câmera. -->
     <uses-permission android:name="android.permission.CAMERA"/>
     <uses-feature android:name="android.hardware.camera" android:required="false"/>
+    <!-- Impressora térmica Bluetooth (cupom). Android 12+ usa CONNECT/SCAN. -->
+    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30"/>
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30"/>
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT"/>
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation"/>
+    <uses-feature android:name="android.hardware.bluetooth" android:required="false"/>
     <application
         android:label="Venda Completa"
         android:name="${applicationName}"

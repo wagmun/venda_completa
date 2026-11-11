@@ -10,8 +10,6 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:venda_completa_server/auth.dart';
 import 'package:venda_completa_server/db.dart';
 import 'package:venda_completa_server/bling_service.dart';
-import 'package:venda_completa_server/nfce_xml_builder.dart';
-import 'package:venda_completa_server/sefaz_service.dart';
 
 final BlingService _bling = BlingService();
 
@@ -55,10 +53,6 @@ Future<void> _storeBlingTokens(String tenantId, BlingTokens t) async {
     },
   );
 }
-
-/// Transmissão fiscal. Troque por uma implementação real (provedor/SEFAZ)
-/// para produção — é o único ponto a mudar.
-final SefazService _sefaz = FakeSefazService();
 
 /// Conexões WebSocket ativas, agrupadas por empresa (tenant_id). O broadcast
 /// de estoque é roteado ESTRITAMENTE para os clientes do mesmo tenant.
@@ -234,6 +228,7 @@ Future<Response> _syncVenda(Request req) async {
   final clienteNome = (body['cliente_nome'] ?? 'Consumidor Final').toString();
   final clienteDoc = (body['cliente_cpf_cnpj'] ?? '00000000000').toString();
 
+  var orderId = '';
   try {
     await Db.connection.runTx((tx) async {
       final inserted = await tx.execute(
@@ -253,7 +248,7 @@ Future<Response> _syncVenda(Request req) async {
           'total': valorTotal,
         },
       );
-      final orderId = inserted.first.first.toString();
+      orderId = inserted.first.first.toString();
 
       for (final item in items) {
         final productId = (item['product_id'] ?? '').toString();
@@ -284,110 +279,22 @@ Future<Response> _syncVenda(Request req) async {
           parameters: {'qtd': qtd, 'tid': tenantId, 'pid': productId},
         );
       }
-
-      // Nota fiscal emitida no app em contingência. Ao chegar ao servidor,
-      // simulamos a transmissão à SEFAZ: ela "autoriza" e devolve o protocolo.
-      final fiscal = body['fiscal'];
-      if (fiscal is Map) {
-        await tx.execute(
-          Sql.named('''
-            INSERT INTO fiscal_invoices (tenant_id, order_id, modelo, serie,
-              numero, chave_acesso, tp_emis, status_sefaz)
-            VALUES (@t, @o, @mod, @s, @n, @chave, @tp, 'OFFLINE')
-            ON CONFLICT (chave_acesso) DO NOTHING
-          '''),
-          parameters: {
-            't': tenantId,
-            'o': orderId,
-            'mod': (fiscal['modelo'] ?? '65').toString(),
-            's': int.tryParse('${fiscal['serie'] ?? 1}') ?? 1,
-            'n': int.tryParse('${fiscal['numero'] ?? 0}') ?? 0,
-            'chave': (fiscal['chave_acesso'] ?? '').toString(),
-            'tp': (fiscal['tp_emis'] ?? '9').toString(),
-          },
-        );
-      }
     });
   } catch (e) {
     return _json(500, {'error': 'Falha ao gravar a venda: $e'});
   }
 
-  // Transmissão à SEFAZ (fora da transação — é rede/assíncrono). Troque a
-  // injeção de `_sefaz` por uma implementação real para produção.
-  final fiscal = body['fiscal'];
-  if (fiscal is Map) {
-    try {
-      final chave = (fiscal['chave_acesso'] ?? '').toString();
-
-      // Monta o XML da NFC-e (dados do emitente + itens da venda).
-      final emit = await Db.query(
-        'SELECT razao_social, cnpj, inscricao_estadual, uf FROM tenants WHERE id = @t',
-        params: {'t': tenantId},
-      );
-      String? xml;
-      if (emit.isNotEmpty) {
-        final e = emit.first;
-        xml = NfceXmlBuilder.build(
-          chave: chave,
-          razaoSocial: (e['razao_social'] ?? '').toString(),
-          cnpj: (e['cnpj'] ?? '').toString(),
-          inscricaoEstadual: (e['inscricao_estadual'] ?? '').toString(),
-          uf: (e['uf'] ?? 'SP').toString(),
-          serie: int.tryParse('${fiscal['serie'] ?? 1}') ?? 1,
-          numero: int.tryParse('${fiscal['numero'] ?? 0}') ?? 0,
-          tpEmis: (fiscal['tp_emis'] ?? '9').toString(),
-          itens: items,
-          valorTotal: valorTotal,
-          formaPagamento: formaPagamento,
-        );
-      }
-
-      // Transmite (mock). RealSefazService assinaria o XML e enviaria à SEFAZ.
-      final r = await _sefaz.transmitir(
-        chaveAcesso: chave,
-        modelo: (fiscal['modelo'] ?? '65').toString(),
-        serie: int.tryParse('${fiscal['serie'] ?? 1}') ?? 1,
-        numero: int.tryParse('${fiscal['numero'] ?? 0}') ?? 0,
-        tpEmis: (fiscal['tp_emis'] ?? '9').toString(),
-      );
-      await Db.connection.execute(
-        Sql.named('''
-          UPDATE fiscal_invoices
-          SET status_sefaz = @s, protocolo_autorizacao = @p, motivo_rejeicao = @m,
-              xml_assinado = @xml
-          WHERE tenant_id = @t AND chave_acesso = @c
-        '''),
-        parameters: {
-          's': r.status,
-          'p': r.protocolo,
-          'm': r.motivo,
-          'xml': xml,
-          't': tenantId,
-          'c': chave,
-        },
-      );
-    } catch (_) {/* fica OFFLINE para nova tentativa de conciliação */}
-  }
-
-  // Empurra a venda ao Bling, se a empresa estiver conectada (best-effort).
-  try {
-    final bt = await _blingToken(tenantId);
-    if (bt != null) {
-      await _bling.createSale(
-        bt,
-        clienteNome: clienteNome,
-        clienteDoc: clienteDoc,
-        itens: items
-            .map((i) => {
-                  'descricao': i['descricao'],
-                  'sku': i['sku'],
-                  'quantidade': i['quantidade'],
-                  'valor': i['preco_unitario'],
-                })
-            .toList(),
-      );
-    }
-  } catch (_) {/* não bloqueia a venda; reconcilia depois */}
+  // Emissão da NF-e modelo 55 + boleto pelo Bling (fora da transação — rede).
+  // Best-effort: falha não bloqueia a venda; fica para reconciliação.
+  await _emitirNfe55Bling(
+    tenantId: tenantId,
+    orderId: orderId,
+    clientOrderId: clientOrderId,
+    clienteNome: clienteNome,
+    clienteDoc: clienteDoc,
+    items: items,
+    valorTotal: valorTotal,
+  );
 
   // Broadcast de estoque em tempo real para os outros vendedores do tenant.
   try {
@@ -497,16 +404,148 @@ Future<Response> _changePassword(Request req) async {
 }
 
 /// GET /fiscal/status/<orderId> — status fiscal (SEFAZ) de um pedido do app.
+/// Emite a NF-e modelo 55 (e gera a parcela/boleto) pelo Bling a partir da
+/// venda já gravada. Busca o destinatário no Bling pelo documento (traz IE e
+/// endereço que o cliente mantém lá). Grava o resultado em fiscal_invoices.
+Future<void> _emitirNfe55Bling({
+  required String tenantId,
+  required String orderId,
+  required String clientOrderId,
+  required String clienteNome,
+  required String clienteDoc,
+  required List<Map<String, dynamic>> items,
+  required double valorTotal,
+}) async {
+  final bt = await _blingToken(tenantId);
+  if (bt == null) return; // empresa sem Bling conectado
+
+  try {
+    // Config fiscal da empresa (natureza de operação / loja / forma boleto).
+    final cfg = await Db.query(
+      '''SELECT bling_natureza_operacao_id, bling_loja_id,
+                bling_forma_pagamento_boleto_id
+         FROM tenants WHERE id = @t''',
+      params: {'t': tenantId},
+    );
+    final c = cfg.isNotEmpty ? cfg.first : const {};
+    final naturezaId = int.tryParse('${c['bling_natureza_operacao_id'] ?? ''}');
+    final lojaId = int.tryParse('${c['bling_loja_id'] ?? ''}');
+    final formaBoletoId =
+        int.tryParse('${c['bling_forma_pagamento_boleto_id'] ?? ''}');
+
+    final docLimpo = clienteDoc.replaceAll(RegExp(r'[^0-9]'), '');
+    final tipoPessoa = docLimpo.length > 11 ? 'J' : 'F';
+
+    // Destinatário: usa o contato já cadastrado no Bling, se existir.
+    final contato = await _bling.buscarContato(bt, clienteDoc);
+    final Map<String, dynamic> destinatario = contato != null
+        ? {
+            'id': contato['id'],
+            'nome': (contato['nome'] ?? clienteNome).toString(),
+            'numeroDocumento': (contato['numeroDocumento'] ?? clienteDoc).toString(),
+            'tipoPessoa': (contato['tipoPessoa'] ?? tipoPessoa).toString(),
+            if (contato['ie'] != null) 'ie': contato['ie'],
+            if (contato['endereco'] != null) 'endereco': contato['endereco'],
+          }
+        : {
+            'nome': clienteNome,
+            'numeroDocumento': clienteDoc,
+            'tipoPessoa': tipoPessoa,
+          };
+
+    final itensNfe = items
+        .map((i) => {
+              'codigo': (i['sku'] ?? '').toString(),
+              'descricao': (i['descricao'] ?? '').toString(),
+              'unidade': 'UN',
+              'quantidade': _toDouble(i['quantidade']),
+              'valor': _toDouble(i['preco_unitario']),
+            })
+        .toList();
+
+    // Parcela única (vence em 1 dia); com forma de boleto gera a cobrança.
+    final venc = DateTime.now().add(const Duration(days: 1));
+    final vencStr =
+        '${venc.year.toString().padLeft(4, '0')}-${venc.month.toString().padLeft(2, '0')}-${venc.day.toString().padLeft(2, '0')}';
+    final parcelas = <Map<String, dynamic>>[
+      {
+        'data': vencStr,
+        'valor': valorTotal,
+        if (formaBoletoId != null) 'formaPagamento': {'id': formaBoletoId},
+      }
+    ];
+
+    final idNota = await _bling.createNfe(
+      bt,
+      destinatario: destinatario,
+      itens: itensNfe,
+      parcelas: parcelas,
+      naturezaOperacaoId: naturezaId,
+      lojaId: lojaId,
+      observacoes: 'Pedido $clientOrderId',
+    );
+
+    // Registra a nota como PROCESSANDO antes de enviar à SEFAZ.
+    await Db.connection.execute(
+      Sql.named('''
+        INSERT INTO fiscal_invoices (tenant_id, order_id, modelo, serie, numero,
+          tp_emis, status_sefaz, bling_nota_id)
+        VALUES (@t, @o, '55', 0, 0, '1', 'PROCESSANDO', @bid)
+      '''),
+      parameters: {'t': tenantId, 'o': orderId, 'bid': idNota},
+    );
+
+    // Envia à SEFAZ e consulta o resultado.
+    await _bling.enviarNfe(bt, idNota);
+    final st = await _bling.getNfe(bt, idNota);
+    await Db.connection.execute(
+      Sql.named('''
+        UPDATE fiscal_invoices
+        SET status_sefaz = @s,
+            chave_acesso = NULLIF(@c, ''),
+            link_danfe = NULLIF(@l, ''),
+            numero = COALESCE(NULLIF(@n, '')::int, numero),
+            protocolo_autorizacao = NULLIF(@c, ''),
+            motivo_rejeicao = NULLIF(@m, '')
+        WHERE bling_nota_id = @bid AND tenant_id = @t
+      '''),
+      parameters: {
+        's': st['status'],
+        'c': st['chave_acesso'],
+        'l': st['link_danfe'],
+        'n': st['numero'],
+        'm': st['motivo'],
+        'bid': idNota,
+        't': tenantId,
+      },
+    );
+  } catch (e) {
+    // Falha de emissão: registra para reconciliação, sem bloquear a venda.
+    try {
+      await Db.connection.execute(
+        Sql.named('''
+          INSERT INTO fiscal_invoices (tenant_id, order_id, modelo, serie,
+            numero, tp_emis, status_sefaz, motivo_rejeicao)
+          VALUES (@t, @o, '55', 0, 0, '1', 'ERRO', @m)
+        '''),
+        parameters: {'t': tenantId, 'o': orderId, 'm': e.toString()},
+      );
+    } catch (_) {/* ignora */}
+  }
+}
+
 Future<Response> _fiscalStatus(Request req, String orderId) async {
   final claims = _authClaims(req);
   if (claims == null) return _json(401, {'error': 'Token inválido.'});
   final tenantId = claims['tenant_id'].toString();
   final rows = await Db.query(
     '''
-    SELECT fi.status_sefaz, fi.protocolo_autorizacao, fi.chave_acesso
+    SELECT fi.status_sefaz, fi.protocolo_autorizacao, fi.chave_acesso,
+           fi.modelo, fi.link_danfe, fi.motivo_rejeicao
     FROM fiscal_invoices fi
     JOIN orders o ON o.id = fi.order_id
     WHERE o.tenant_id = @t AND o.client_order_id = @c
+    ORDER BY fi.created_at DESC
     ''',
     params: {'t': tenantId, 'c': orderId},
   );
@@ -517,6 +556,9 @@ Future<Response> _fiscalStatus(Request req, String orderId) async {
     'status_sefaz': rows.first['status_sefaz'],
     'protocolo': rows.first['protocolo_autorizacao'],
     'chave_acesso': rows.first['chave_acesso'],
+    'modelo': rows.first['modelo'],
+    'link_danfe': rows.first['link_danfe'],
+    'motivo': rows.first['motivo_rejeicao'],
   });
 }
 
