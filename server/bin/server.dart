@@ -13,7 +13,7 @@ import 'package:venda_completa_server/bling_service.dart';
 
 /// Versão publicada do servidor. BUMP a cada deploy relevante — a aba "Status"
 /// do painel mostra este valor, então dá pra ver na hora se o deploy subiu.
-const String kServerVersion = '2026-11-12.2-bling-empresa';
+const String kServerVersion = '2026-11-12.3-bling-empresa-aba';
 
 final BlingService _bling = BlingService();
 
@@ -1057,13 +1057,32 @@ Future<Response> _adminStatus(Request req) async {
 Future<Response> _blingStatus(Request req) async {
   final claims = _adminClaims(req);
   if (claims == null) return _json(403, {'error': 'Acesso restrito ao administrador.'});
+  final tenantId = claims['tenant_id'].toString();
   final rows = await Db.query(
     "SELECT (bling_access_token IS NOT NULL AND bling_access_token <> '') AS conectado FROM tenants WHERE id = @t",
-    params: {'t': claims['tenant_id'].toString()},
+    params: {'t': tenantId},
   );
+  final conectado = rows.isNotEmpty && rows.first['conectado'] == true;
+
+  // De QUEM é o Bling (nome + CNPJ da conta), pra mostrar na própria linha.
+  String empresa = '';
+  String cnpj = '';
+  if (conectado) {
+    try {
+      final token = await _blingToken(tenantId);
+      if (token != null) {
+        final e = await _bling.dadosEmpresa(token);
+        empresa = e['nome'] ?? '';
+        cnpj = e['cnpj'] ?? '';
+      }
+    } catch (_) {/* não quebra o status */}
+  }
+
   return _json(200, {
     'configurado': _bling.configurado,
-    'conectado': rows.isNotEmpty && rows.first['conectado'] == true,
+    'conectado': conectado,
+    'empresa': empresa,
+    'cnpj': cnpj,
   });
 }
 

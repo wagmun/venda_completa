@@ -523,7 +523,10 @@ async function loadBling() {
     if (!s.configurado) {
       el.innerHTML = '<b style="color:#b26a00">Servidor sem credenciais Bling</b> (configurar BLING_CLIENT_ID/SECRET).';
     } else if (s.conectado) {
-      el.innerHTML = '<b style="color:#1e7e45">Conectado ao Bling.</b>';
+      const quem = s.empresa || s.cnpj
+        ? ` — ${s.empresa || ''}${s.cnpj ? ' (CNPJ ' + s.cnpj + ')' : ''}`
+        : '';
+      el.innerHTML = `<b style="color:#1e7e45">Conectado ao Bling${quem}.</b>`;
     } else {
       el.innerHTML = '<b style="color:#b26a00">Não conectado.</b> Clique em "Conectar ao Bling".';
     }
