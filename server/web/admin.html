@@ -158,7 +158,13 @@
         <p id="blingStatus" style="font-size:14px;margin:8px 0">Verificando...</p>
         <div class="actions" style="justify-content:flex-start">
           <button class="btn-primary" onclick="blingConnect()">Conectar ao Bling</button>
+          <button class="btn-light" onclick="blingCopyLink()">Copiar link para o cliente</button>
           <button class="btn-light" onclick="blingSync()">Sincronizar estoque agora</button>
+        </div>
+        <div id="blingLinkBox" class="hidden" style="margin-top:10px">
+          <label>Link de autorização — envie este link ao cliente (WhatsApp/e-mail).
+            Ele abre, entra no Bling dele e autoriza:</label>
+          <input id="blingLink" readonly onclick="this.select()" style="width:100%">
         </div>
         <p style="font-size:12px;color:#667;margin-top:12px">
           "Conectar" abre o Bling para você autorizar o acesso. Depois, "Sincronizar"
@@ -475,6 +481,15 @@ async function blingConnect() {
     const r = await api('/admin/bling/connect');
     window.open(r.url, '_blank');
     msg('blingMsg', 'Autorize o acesso na aba do Bling e depois clique em "Sincronizar estoque".', 'ok');
+  } catch (e) { msg('blingMsg', e.message, 'err'); }
+}
+async function blingCopyLink() {
+  try {
+    const r = await api('/admin/bling/connect');
+    document.getElementById('blingLink').value = r.url;
+    document.getElementById('blingLinkBox').classList.remove('hidden');
+    try { await navigator.clipboard.writeText(r.url); msg('blingMsg', 'Link copiado. Cole no WhatsApp/e-mail e envie ao cliente.', 'ok'); }
+    catch (_) { msg('blingMsg', 'Link gerado abaixo. Selecione e copie para enviar ao cliente.', 'ok'); }
   } catch (e) { msg('blingMsg', e.message, 'err'); }
 }
 async function blingSync() {
