@@ -105,14 +105,18 @@ Resposta `201` = criada. `409` = já existe. Anotar o login no item 3 deste arqu
 
 ## 7. Procedimento — rodar um teste (1 ação por linha)
 
-1. Painel `/admin` → entrar com o admin da empresa.
-2. Aba **Status** → conferir o estado (Bling? fiscal? produtos? versão?).
-3. Aba **Bling** → **Conectar ao Bling** (ou **Copiar link para o cliente** e enviar) → cliente autoriza.
-4. Aba **Bling** → **Configuração fiscal** → **Carregar do Bling** → escolher natureza + forma boleto → **Salvar**.
-5. Aba **Bling** → **Sincronizar estoque agora**.
-6. Aba **Vendedores** → criar o login do vendedor.
-7. Instalar o APK no celular; parear a impressora Bluetooth.
-8. App → entrar como vendedor → vender → NF-e 55 + boleto → imprimir comprovante.
+Papéis: **[Aion]** = quem configura (você/vendedor do app) · **[cliente]** = quem compra/usa o app e é dono do Bling.
+Ordem importa: **sincronizar estoque vem logo após conectar o Bling**; **config fiscal fica antes da 1ª venda** (natureza de operação só importa na hora da nota, não no espelhamento do estoque).
+
+1. [Aion] Painel `/admin` → logar como admin da empresa → aba **Status** confirma empresa/CNPJ.
+2. [Aion] Aba **Bling** → **Conectar ao Bling** (ou **Copiar link para o cliente** e enviar).
+3. [cliente] Na tela do Bling, logar (CNPJ **ou** e-mail) e **Autorizar**.
+4. [Aion] Confirmar "conectado" (aba Bling ou Status).
+5. [Aion] **Sincronizar estoque agora** → puxa os produtos do Bling.
+6. [Aion] Aba **Vendedores** → criar o login do vendedor (login do app).
+7. [Aion] **Configuração fiscal** → **Carregar do Bling** → natureza de operação de venda + forma de pagamento do boleto → **Salvar**. (O CFOP/imposto por produto o Bling resolve da ficha do produto; aqui é só a natureza padrão de venda.)
+8. [cliente] Instalar o APK no celular; parear a impressora Bluetooth.
+9. [cliente] App → entrar como vendedor → vender → NF-e 55 + boleto → "Abrir DANFE" / imprimir "Comprovante".
 
 Entre cada passo, conferir na aba **Status** se o estado mudou como esperado.
 
