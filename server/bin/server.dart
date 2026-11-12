@@ -13,7 +13,7 @@ import 'package:venda_completa_server/bling_service.dart';
 
 /// Versão publicada do servidor. BUMP a cada deploy relevante — a aba "Status"
 /// do painel mostra este valor, então dá pra ver na hora se o deploy subiu.
-const String kServerVersion = '2026-11-12.4-debug';
+const String kServerVersion = '2026-11-12.5-novo-cliente';
 
 final BlingService _bling = BlingService();
 
@@ -360,6 +360,18 @@ Future<Response> _adminPage(Request req) async {
   final file = File('web/admin.html');
   if (!await file.exists()) {
     return Response.notFound('Página do painel não encontrada.');
+  }
+  return Response.ok(
+    await file.readAsString(),
+    headers: {'content-type': 'text/html; charset=utf-8'},
+  );
+}
+
+/// GET /novo-cliente — página web para cadastrar uma empresa (chama /provision).
+Future<Response> _novoClientePage(Request req) async {
+  final file = File('web/novo-cliente.html');
+  if (!await file.exists()) {
+    return Response.notFound('Página não encontrada.');
   }
   return Response.ok(
     await file.readAsString(),
@@ -1399,6 +1411,7 @@ Future<void> main() async {
     ..get('/ws', _wsHandler)
     // Painel administrativo (role=admin)
     ..get('/admin', _adminPage)
+    ..get('/novo-cliente', _novoClientePage)
     ..get('/admin/products', _adminListProducts)
     ..post('/admin/products', _adminCreateProduct)
     ..post('/admin/products/import', _adminImportProducts)

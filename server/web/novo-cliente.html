@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cadastrar empresa — Venda Completa</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: system-ui, -apple-system, sans-serif; background:#f4f5f8; margin:0; color:#222; }
+  .wrap { max-width: 520px; margin: 40px auto; padding: 0 16px; }
+  .card { background:#fff; border-radius:12px; padding:24px; box-shadow:0 1px 6px rgba(0,0,0,.08); }
+  h1 { font-size:20px; margin:0 0 4px; }
+  p.sub { color:#667; font-size:13px; margin:0 0 20px; }
+  label { display:block; font-size:13px; color:#445; margin:14px 0 4px; font-weight:600; }
+  input { width:100%; padding:10px 12px; border:1px solid #cfd4dc; border-radius:8px; font-size:15px; }
+  .hint { font-size:12px; color:#889; margin-top:3px; }
+  button { margin-top:22px; width:100%; padding:12px; background:#3b4ef0; color:#fff; border:0; border-radius:8px; font-size:16px; font-weight:600; cursor:pointer; }
+  button:disabled { opacity:.6; cursor:default; }
+  .msg { margin-top:16px; padding:12px; border-radius:8px; font-size:14px; display:none; }
+  .ok { background:#e6f6ec; color:#1e7e45; }
+  .err { background:#fdecea; color:#b23b2e; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="card">
+    <h1>Cadastrar empresa</h1>
+    <p class="sub">Cria a empresa e o login de administrador dela no sistema.</p>
+
+    <label>Chave de plataforma</label>
+    <input id="key" type="password" placeholder="cole a chave de plataforma">
+    <div class="hint">Está no seu arquivo de referência (PLATFORM_KEY).</div>
+
+    <label>Razão social</label>
+    <input id="razao" placeholder="Ex.: R A Sanches Telefonia Ltda">
+
+    <label>CNPJ</label>
+    <input id="cnpj" placeholder="só números ou com pontuação">
+
+    <label>UF (estado)</label>
+    <input id="uf" maxlength="2" placeholder="PR" style="text-transform:uppercase">
+
+    <label>Inscrição Estadual</label>
+    <input id="ie" value="ISENTO">
+    <div class="hint">Se não tiver, deixe ISENTO.</div>
+
+    <label>E-mail do administrador (login do painel)</label>
+    <input id="email" type="email" placeholder="admin@empresa.com">
+
+    <label>Senha do administrador</label>
+    <input id="senha" placeholder="escolha uma senha simples">
+
+    <button id="btn" onclick="cadastrar()">Cadastrar empresa</button>
+    <div id="msg" class="msg"></div>
+  </div>
+</div>
+
+<script>
+function show(txt, kind) {
+  const m = document.getElementById('msg');
+  m.textContent = txt; m.className = 'msg ' + kind; m.style.display = 'block';
+}
+async function cadastrar() {
+  const key = document.getElementById('key').value.trim();
+  const razao = document.getElementById('razao').value.trim();
+  const cnpj = document.getElementById('cnpj').value.replace(/\D/g, '');
+  const uf = document.getElementById('uf').value.trim().toUpperCase();
+  const ie = document.getElementById('ie').value.trim() || 'ISENTO';
+  const email = document.getElementById('email').value.trim().toLowerCase();
+  const senha = document.getElementById('senha').value;
+  if (!key || !razao || !cnpj || !uf || !email || !senha) {
+    return show('Preencha todos os campos (chave, razão social, CNPJ, UF, e-mail e senha).', 'err');
+  }
+  const btn = document.getElementById('btn');
+  btn.disabled = true; show('Cadastrando...', 'ok');
+  try {
+    const res = await fetch('/provision', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Platform-Key': key },
+      body: JSON.stringify({ razao_social: razao, cnpj, uf, inscricao_estadual: ie, admin_email: email, admin_senha: senha })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.status === 201) {
+      show('Empresa cadastrada! Login do painel: ' + email + '  — agora entre em /admin com esse login.', 'ok');
+    } else if (res.status === 409) {
+      show('Esta empresa (CNPJ ou e-mail) já estava cadastrada. Pode seguir.', 'err');
+    } else if (res.status === 403) {
+      show('Chave de plataforma inválida. Confira a chave e tente de novo.', 'err');
+    } else {
+      show('Erro: ' + (data.error || ('HTTP ' + res.status)), 'err');
+    }
+  } catch (e) {
+    show('Falha de conexão: ' + e.message, 'err');
+  } finally {
+    btn.disabled = false;
+  }
+}
+</script>
+</body>
+</html>
