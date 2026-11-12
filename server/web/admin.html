@@ -56,10 +56,28 @@
   </header>
   <div class="wrap">
     <div class="tabs">
+      <button id="tabStatus" onclick="showTab('status')">Status</button>
       <button id="tabProd" class="active" onclick="showTab('prod')">Produtos</button>
       <button id="tabVend" onclick="showTab('vend')">Vendedores</button>
       <button id="tabNota" onclick="showTab('nota')">Notas fiscais</button>
       <button id="tabBling" onclick="showTab('bling')">Bling</button>
+    </div>
+
+    <!-- STATUS -->
+    <div id="statusTab" class="hidden">
+      <div class="card">
+        <h2>Status desta empresa</h2>
+        <div id="statusMsg"></div>
+        <p style="font-size:13px;color:#667;margin:6px 0 12px">
+          Foto do estado atual, lida do servidor. Confira aqui antes de testar.
+        </p>
+        <table style="width:100%">
+          <tbody id="statusRows"></tbody>
+        </table>
+        <div class="actions" style="justify-content:flex-start;margin-top:10px">
+          <button class="btn-light" onclick="loadStatus()">Atualizar</button>
+        </div>
+      </div>
     </div>
 
     <!-- PRODUTOS -->
@@ -249,16 +267,47 @@ function logout() {
   document.getElementById('loginView').classList.remove('hidden');
 }
 function showTab(t) {
+  document.getElementById('statusTab').classList.toggle('hidden', t !== 'status');
   document.getElementById('prodTab').classList.toggle('hidden', t !== 'prod');
   document.getElementById('vendTab').classList.toggle('hidden', t !== 'vend');
   document.getElementById('notaTab').classList.toggle('hidden', t !== 'nota');
   document.getElementById('blingTab').classList.toggle('hidden', t !== 'bling');
+  document.getElementById('tabStatus').classList.toggle('active', t === 'status');
   document.getElementById('tabProd').classList.toggle('active', t === 'prod');
   document.getElementById('tabVend').classList.toggle('active', t === 'vend');
   document.getElementById('tabNota').classList.toggle('active', t === 'nota');
   document.getElementById('tabBling').classList.toggle('active', t === 'bling');
+  if (t === 'status') loadStatus();
   if (t === 'nota') loadInvoices();
   if (t === 'bling') loadBling();
+}
+
+// ----- Status -----
+function statusLinha(rotulo, valor, ok) {
+  const cor = ok === true ? '#1e7e45' : ok === false ? '#b26a00' : '#333';
+  const marca = ok === true ? '✓ ' : ok === false ? '✗ ' : '';
+  return `<tr>
+    <td style="padding:6px 10px;color:#667">${rotulo}</td>
+    <td style="padding:6px 10px;font-weight:600;color:${cor}">${marca}${valor}</td>
+  </tr>`;
+}
+async function loadStatus() {
+  msg('statusMsg', 'Lendo o estado do servidor...', 'ok');
+  try {
+    const s = await api('/admin/status');
+    document.getElementById('statusRows').innerHTML = [
+      statusLinha('Empresa', s.empresa || '—'),
+      statusLinha('CNPJ', s.cnpj || '—'),
+      statusLinha('UF', s.uf || '—'),
+      statusLinha('Bling conectado', s.bling_conectado ? 'Sim' : 'Não', s.bling_conectado),
+      statusLinha('Configuração fiscal (NF-e 55)', s.fiscal_configurado ? 'Pronta' : 'Faltando', s.fiscal_configurado),
+      statusLinha('Produtos no catálogo', s.qtd_produtos, Number(s.qtd_produtos) > 0),
+      statusLinha('Vendedores cadastrados', s.qtd_vendedores, Number(s.qtd_vendedores) > 0),
+      statusLinha('Vendas registradas', s.qtd_vendas),
+      statusLinha('Versão publicada do servidor', s.versao_servidor),
+    ].join('');
+    msg('statusMsg', '', '');
+  } catch (e) { msg('statusMsg', e.message, 'err'); }
 }
 
 // ----- Produtos -----

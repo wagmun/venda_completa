@@ -11,6 +11,10 @@ import 'package:venda_completa_server/auth.dart';
 import 'package:venda_completa_server/db.dart';
 import 'package:venda_completa_server/bling_service.dart';
 
+/// Versão publicada do servidor. BUMP a cada deploy relevante — a aba "Status"
+/// do painel mostra este valor, então dá pra ver na hora se o deploy subiu.
+const String kServerVersion = '2026-11-12.1-nfe55';
+
 final BlingService _bling = BlingService();
 
 /// Access token do Bling do tenant, renovando se expirado. Null se não conectado.
@@ -993,6 +997,47 @@ Future<Response> _blingCallback(Request req) async {
 }
 
 /// GET /admin/bling/status — se a empresa está conectada ao Bling.
+/// GET /admin/status — fotografia do estado desta empresa, pra aba "Status"
+/// do painel. Mostra empresa/CNPJ, Bling conectado, config fiscal, contagens e
+/// a versão publicada do servidor (pra saber se o deploy subiu).
+Future<Response> _adminStatus(Request req) async {
+  final claims = _adminClaims(req);
+  if (claims == null) return _json(403, {'error': 'Acesso restrito ao administrador.'});
+  final tenantId = claims['tenant_id'].toString();
+
+  final t = await Db.query(
+    '''SELECT razao_social, cnpj, uf,
+              (bling_access_token IS NOT NULL AND bling_access_token <> '') AS bling_ok,
+              bling_natureza_operacao_id, bling_forma_pagamento_boleto_id
+       FROM tenants WHERE id = @t''',
+    params: {'t': tenantId},
+  );
+  final row = t.isNotEmpty ? t.first : const {};
+
+  final nProdutos = await Db.query(
+      'SELECT COUNT(*) AS n FROM products WHERE tenant_id = @t', params: {'t': tenantId});
+  final nVendedores = await Db.query(
+      "SELECT COUNT(*) AS n FROM sellers WHERE tenant_id = @t AND role = 'vendedor'",
+      params: {'t': tenantId});
+  final nVendas = await Db.query(
+      'SELECT COUNT(*) AS n FROM orders WHERE tenant_id = @t', params: {'t': tenantId});
+
+  final fiscalOk = row['bling_natureza_operacao_id'] != null &&
+      row['bling_forma_pagamento_boleto_id'] != null;
+
+  return _json(200, {
+    'versao_servidor': kServerVersion,
+    'empresa': row['razao_social'],
+    'cnpj': row['cnpj'],
+    'uf': row['uf'],
+    'bling_conectado': row['bling_ok'] == true,
+    'fiscal_configurado': fiscalOk,
+    'qtd_produtos': nProdutos.first['n'],
+    'qtd_vendedores': nVendedores.first['n'],
+    'qtd_vendas': nVendas.first['n'],
+  });
+}
+
 Future<Response> _blingStatus(Request req) async {
   final claims = _adminClaims(req);
   if (claims == null) return _json(403, {'error': 'Acesso restrito ao administrador.'});
@@ -1284,6 +1329,8 @@ Future<void> main() async {
 
   final router = Router()
     ..get('/health', (Request req) => _json(200, {'status': 'ok'}))
+    ..get('/version', (Request req) => _json(200, {'version': kServerVersion}))
+    ..get('/admin/status', _adminStatus)
     ..post('/auth/login', _login)
     ..post('/auth/change-password', _changePassword)
     ..get('/sync/catalog', _catalog)
