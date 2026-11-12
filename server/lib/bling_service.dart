@@ -138,6 +138,29 @@ class BlingService {
     }
   }
 
+  /// Identidade da empresa dona do token Bling (nome + CNPJ). Usado pra mostrar
+  /// no painel DE QUEM é o Bling conectado. Parsing defensivo (nomes variam).
+  Future<Map<String, String>> dadosEmpresa(String accessToken) async {
+    final res = await _send(
+      'GET',
+      '$_apiBase/empresas/me/dados-basicos',
+      headers: {'Authorization': 'Bearer $accessToken'},
+    );
+    final j = jsonDecode(res) as Map<String, dynamic>;
+    final d = (j['data'] as Map<String, dynamic>?) ?? j;
+    final fiscais = (d['dadosFiscais'] as Map<String, dynamic>?) ?? const {};
+    String pick(List<dynamic> vs) {
+      for (final v in vs) {
+        if (v != null && v.toString().trim().isNotEmpty) return v.toString();
+      }
+      return '';
+    }
+    return {
+      'nome': pick([d['nomeFantasia'], d['fantasia'], d['nome'], d['razaoSocial']]),
+      'cnpj': pick([d['cnpj'], d['numeroDocumento'], fiscais['cnpj'], fiscais['numeroDocumento']]),
+    };
+  }
+
   /// Lista as naturezas de operação ativas do Bling (id + descrição).
   Future<List<Map<String, dynamic>>> listarNaturezas(String accessToken) async {
     final res = await _send(

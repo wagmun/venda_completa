@@ -299,7 +299,11 @@ async function loadStatus() {
       statusLinha('Empresa', s.empresa || '—'),
       statusLinha('CNPJ', s.cnpj || '—'),
       statusLinha('UF', s.uf || '—'),
-      statusLinha('Bling conectado', s.bling_conectado ? 'Sim' : 'Não', s.bling_conectado),
+      statusLinha('Bling conectado', s.bling_conectado
+          ? (s.bling_empresa || s.bling_cnpj
+              ? `Sim — ${s.bling_empresa || ''}${s.bling_cnpj ? ' (CNPJ ' + s.bling_cnpj + ')' : ''}`
+              : 'Sim')
+          : 'Não', s.bling_conectado),
       statusLinha('Configuração fiscal (NF-e 55)', s.fiscal_configurado ? 'Pronta' : 'Faltando', s.fiscal_configurado),
       statusLinha('Produtos no catálogo', s.qtd_produtos, Number(s.qtd_produtos) > 0),
       statusLinha('Vendedores cadastrados', s.qtd_vendedores, Number(s.qtd_vendedores) > 0),

@@ -105,7 +105,14 @@ Resposta `201` = criada. `409` = já existe. Anotar o login no item 3 deste arqu
 
 ## 7. Procedimento — rodar um teste (1 ação por linha)
 
-Papéis: **[Aion]** = quem configura (você/vendedor do app) · **[cliente]** = quem compra/usa o app e é dono do Bling.
+### PAPÉIS (definição fixa — não inverter)
+- **Aion = o DESENVOLVEDOR (você).** Dona do app. Monta/configura a plataforma. **Não é cliente.**
+- **cliente = a empresa que COMPRA e USA o app** (futuro). Dona do Bling/estoque/vendas dela.
+- **Conectar Bling:** o dono conecta o próprio Bling **direto** (Aion conecta o Bling da Aion sem link). O **link "Copiar para o cliente"** é só pra um **cliente externo** autorizar o Bling DELE.
+- **Teste de hoje:** NÃO há cliente. É **tudo Aion (você)**, usando o **Bling da própria Aion** (CNPJ 69.032.238), você simulando também o vendedor. Nenhum link é enviado.
+- Conceitualmente, operações sobre Bling/estoque/venda são do papel "cliente"; no teste, Aion as executa simulando.
+
+Papéis (produção): **[Aion]** = plataforma/config · **[cliente]** = operação (Bling, estoque, vendas).
 Ordem importa: **sincronizar estoque vem logo após conectar o Bling**; **config fiscal fica antes da 1ª venda** (natureza de operação só importa na hora da nota, não no espelhamento do estoque).
 
 1. [Aion] Painel `/admin` → logar como admin da empresa → aba **Status** confirma empresa/CNPJ.

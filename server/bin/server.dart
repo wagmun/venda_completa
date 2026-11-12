@@ -13,7 +13,7 @@ import 'package:venda_completa_server/bling_service.dart';
 
 /// Versão publicada do servidor. BUMP a cada deploy relevante — a aba "Status"
 /// do painel mostra este valor, então dá pra ver na hora se o deploy subiu.
-const String kServerVersion = '2026-11-12.1-nfe55';
+const String kServerVersion = '2026-11-12.2-bling-empresa';
 
 final BlingService _bling = BlingService();
 
@@ -1025,12 +1025,28 @@ Future<Response> _adminStatus(Request req) async {
   final fiscalOk = row['bling_natureza_operacao_id'] != null &&
       row['bling_forma_pagamento_boleto_id'] != null;
 
+  // De QUEM é o Bling conectado (nome + CNPJ da conta Bling), se conectado.
+  String blingEmpresa = '';
+  String blingCnpj = '';
+  if (row['bling_ok'] == true) {
+    try {
+      final token = await _blingToken(tenantId);
+      if (token != null) {
+        final e = await _bling.dadosEmpresa(token);
+        blingEmpresa = e['nome'] ?? '';
+        blingCnpj = e['cnpj'] ?? '';
+      }
+    } catch (_) {/* não quebra o status se o Bling não responder */}
+  }
+
   return _json(200, {
     'versao_servidor': kServerVersion,
     'empresa': row['razao_social'],
     'cnpj': row['cnpj'],
     'uf': row['uf'],
     'bling_conectado': row['bling_ok'] == true,
+    'bling_empresa': blingEmpresa,
+    'bling_cnpj': blingCnpj,
     'fiscal_configurado': fiscalOk,
     'qtd_produtos': nProdutos.first['n'],
     'qtd_vendedores': nVendedores.first['n'],
