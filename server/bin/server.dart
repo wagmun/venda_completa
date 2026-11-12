@@ -13,7 +13,7 @@ import 'package:venda_completa_server/bling_service.dart';
 
 /// Versão publicada do servidor. BUMP a cada deploy relevante — a aba "Status"
 /// do painel mostra este valor, então dá pra ver na hora se o deploy subiu.
-const String kServerVersion = '2026-11-12.5-novo-cliente';
+const String kServerVersion = '2026-11-12.6-home';
 
 final BlingService _bling = BlingService();
 
@@ -370,6 +370,18 @@ Future<Response> _adminPage(Request req) async {
 /// GET /novo-cliente — página web para cadastrar uma empresa (chama /provision).
 Future<Response> _novoClientePage(Request req) async {
   final file = File('web/novo-cliente.html');
+  if (!await file.exists()) {
+    return Response.notFound('Página não encontrada.');
+  }
+  return Response.ok(
+    await file.readAsString(),
+    headers: {'content-type': 'text/html; charset=utf-8'},
+  );
+}
+
+/// GET / — página inicial com os atalhos (cadastrar empresa, painel, versão).
+Future<Response> _homePage(Request req) async {
+  final file = File('web/home.html');
   if (!await file.exists()) {
     return Response.notFound('Página não encontrada.');
   }
@@ -1399,6 +1411,7 @@ Future<void> main() async {
   stdout.writeln('✓ Conectado ao PostgreSQL (venda_completa)');
 
   final router = Router()
+    ..get('/', _homePage)
     ..get('/health', (Request req) => _json(200, {'status': 'ok'}))
     ..get('/version', (Request req) => _json(200, {'version': kServerVersion}))
     ..get('/admin/status', _adminStatus)

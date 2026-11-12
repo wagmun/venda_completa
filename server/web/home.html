@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Venda Completa</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: system-ui, -apple-system, sans-serif; background:#f4f5f8; margin:0; color:#222; }
+  .top { background:#3b4ef0; color:#fff; padding:20px 16px; }
+  .top h1 { margin:0; font-size:20px; }
+  .top p { margin:4px 0 0; font-size:13px; opacity:.85; }
+  .wrap { max-width: 640px; margin: 28px auto; padding: 0 16px; }
+  .card { background:#fff; border-radius:12px; padding:20px 22px; box-shadow:0 1px 6px rgba(0,0,0,.08); margin-bottom:16px; display:flex; align-items:center; gap:16px; text-decoration:none; color:inherit; }
+  .card:hover { box-shadow:0 2px 12px rgba(0,0,0,.14); }
+  .ico { font-size:28px; width:44px; text-align:center; }
+  .txt h2 { margin:0 0 3px; font-size:16px; }
+  .txt p { margin:0; font-size:13px; color:#667; }
+  .sec { font-size:12px; text-transform:uppercase; letter-spacing:.5px; color:#889; margin:18px 4px 8px; }
+</style>
+</head>
+<body>
+<div class="top">
+  <h1>Venda Completa</h1>
+  <p>Página inicial — escolha o que fazer</p>
+</div>
+<div class="wrap">
+
+  <div class="sec">Cadastro</div>
+  <a class="card" href="/novo-cliente">
+    <div class="ico">🏢</div>
+    <div class="txt">
+      <h2>Cadastrar empresa</h2>
+      <p>Registrar uma nova empresa (cliente) e criar o login de administrador dela.</p>
+    </div>
+  </a>
+
+  <div class="sec">Administração</div>
+  <a class="card" href="/admin">
+    <div class="ico">⚙️</div>
+    <div class="txt">
+      <h2>Painel de administração</h2>
+      <p>Entrar como admin de uma empresa: Bling, produtos, vendedores, notas e status.</p>
+    </div>
+  </a>
+
+  <div class="sec">Verificação</div>
+  <a class="card" href="/version" target="_blank">
+    <div class="ico">🔎</div>
+    <div class="txt">
+      <h2>Versão do servidor</h2>
+      <p>Confirmar qual versão está publicada (útil depois de um deploy).</p>
+    </div>
+  </a>
+
+</div>
+</body>
+</html>
