@@ -13,7 +13,7 @@ import 'package:venda_completa_server/bling_service.dart';
 
 /// Versão publicada do servidor. BUMP a cada deploy relevante — a aba "Status"
 /// do painel mostra este valor, então dá pra ver na hora se o deploy subiu.
-const String kServerVersion = '2026-11-12.3-bling-empresa-aba';
+const String kServerVersion = '2026-11-12.4-debug';
 
 final BlingService _bling = BlingService();
 
@@ -1054,6 +1054,30 @@ Future<Response> _adminStatus(Request req) async {
   });
 }
 
+/// DIAGNÓSTICO temporário: resposta crua do Bling /empresas/me/dados-basicos.
+/// Protegido pela PLATFORM_KEY. Remover depois de resolver.
+Future<Response> _debugBlingEmpresa(Request req, String tenantId) async {
+  final expected = Platform.environment['PLATFORM_KEY'] ?? '';
+  if (expected.isEmpty || (req.headers['x-platform-key'] ?? '') != expected) {
+    return _json(403, {'error': 'chave inválida'});
+  }
+  final token = await _blingToken(tenantId);
+  if (token == null) return _json(400, {'error': 'tenant sem token bling'});
+  final client = HttpClient();
+  try {
+    final r = await client.getUrl(
+        Uri.parse('https://api.bling.com.br/Api/v3/empresas/me/dados-basicos'));
+    r.headers.set('Authorization', 'Bearer $token');
+    final res = await r.close();
+    final body = await res.transform(utf8.decoder).join();
+    return _json(200, {'http_status': res.statusCode, 'body': body});
+  } catch (e) {
+    return _json(200, {'erro': e.toString()});
+  } finally {
+    client.close(force: true);
+  }
+}
+
 Future<Response> _blingStatus(Request req) async {
   final claims = _adminClaims(req);
   if (claims == null) return _json(403, {'error': 'Acesso restrito ao administrador.'});
@@ -1366,6 +1390,7 @@ Future<void> main() async {
     ..get('/health', (Request req) => _json(200, {'status': 'ok'}))
     ..get('/version', (Request req) => _json(200, {'version': kServerVersion}))
     ..get('/admin/status', _adminStatus)
+    ..get('/debug/bling-empresa/<tenantId>', _debugBlingEmpresa)
     ..post('/auth/login', _login)
     ..post('/auth/change-password', _changePassword)
     ..get('/sync/catalog', _catalog)
