@@ -79,6 +79,14 @@ CELULAR / app   ←→   SERVIDOR (Render)   ←→   BLING
 
 ---
 
+## 4b. Mudanças 2026-11-13 (seleção de cliente, boleto, comprovante não-fiscal)
+- **Causa da NF-e 55 falhar antes:** o app não enviava destinatário → servidor usava "Consumidor Final/00000000000" → Bling recusa. Corrigido: **seleção de cliente** na venda (lista do Bling via `GET /sync/customers` + opção "novo cliente"). O checkout agora envia `cliente_nome`/`cliente_cpf_cnpj`.
+- **Boleto:** forma de pagamento "Boleto (Sicoob)" no checkout. Boleto só é gerado quando `payment_method=BOLETO`. Link do boleto capturado (`fiscal_invoices.link_boleto`) e exibido no pós-venda. SQL: **`08_boleto_link.sql`** (rodar no Supabase).
+- **Cupom corrigido:** ESC/POS, texto e PDF deixaram de imprimir "DANFE NFC-e / contingência / QR SEFAZ" → agora é **"COMPROVANTE DE VENDA (não fiscal)"**. O documento fiscal é a **NF-e 55** (PDF A4 do Bling, botão "Imprimir DANFE").
+- **NF-e 55 não tem cupom térmico** (é A4). Impressora térmica Bluetooth imprime só o comprovante não-fiscal.
+- Pré-requisito do teste: escopos fiscais habilitados no app Bling (Notas Fiscais + emissão NF-e 55, Contas a Receber + gerenciar, dados básicos da empresa) — exige o cliente autorizar de novo ao mudar escopos.
+- Versão servidor: `2026-11-13.1-cliente-boleto`.
+
 ## 5. Procedimento — publicar o servidor (Render)
 
 1. Abrir `https://dashboard.render.com` e logar.
