@@ -87,6 +87,14 @@ CELULAR / app   ←→   SERVIDOR (Render)   ←→   BLING
 - Pré-requisito do teste: escopos fiscais habilitados no app Bling (Notas Fiscais + emissão NF-e 55, Contas a Receber + gerenciar, dados básicos da empresa) — exige o cliente autorizar de novo ao mudar escopos.
 - Versão servidor: `2026-11-13.1-cliente-boleto`.
 
+## 4c. Estado da emissão NF-e 55 (2026-11-13, testado)
+- Integração **cria** a NF-e 55 no Bling (destinatário + dataOperacao OK — corrigido o erro "Data de operação inválida" enviando dataOperacao=hoje).
+- **Envio à SEFAZ falha** com `VALIDATION_ERROR: "Há informações obrigatórias faltando na nota"` (code 9, NOTA_FISCAL). NÃO é bug do app — são **dados fiscais incompletos no Bling do cliente**.
+- Suspeitos: **NCM** dos produtos (sync mostra "00000000" — ver se é limitação da lista do Bling ou falta real), **endereço do destinatário** (NF-e 55 exige endereço completo), CFOP/origem/impostos no cadastro do produto.
+- Diagnóstico direto: abrir a nota criada (id aparece no `motivo` em fiscal_invoices) no Bling do cliente → mostra campo a campo o que falta.
+- Teste reproduzível via API: login vendedor → POST /sync/vendas (com product_id UUID real + cliente_cpf_cnpj) → GET /fiscal/status/<order_id>.
+- Testado no emulador: login, catálogo real do Bling, seletor de cliente (contatos reais do Bling), barra de cliente no topo do catálogo — tudo OK.
+
 ## 5. Procedimento — publicar o servidor (Render)
 
 1. Abrir `https://dashboard.render.com` e logar.
