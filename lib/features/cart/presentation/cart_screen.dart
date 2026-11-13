@@ -277,10 +277,25 @@ class CartScreen extends StatelessWidget {
             ),
           ),
           actions: [
+            // Sempre disponível: imprime o comprovante (PDF) da venda.
+            TextButton.icon(
+              icon: const Icon(Icons.print),
+              label: const Text('Imprimir'),
+              onPressed: () async {
+                final messenger = ScaffoldMessenger.of(context);
+                final pdf = await controller.buildLastDanfePdf();
+                if (pdf != null) {
+                  await Printing.layoutPdf(onLayout: (_) async => pdf, name: 'Comprovante');
+                } else {
+                  messenger.showSnackBar(const SnackBar(
+                      content: Text('Nada para imprimir.')));
+                }
+              },
+            ),
             if (temDanfe)
               TextButton.icon(
-                icon: const Icon(Icons.print),
-                label: const Text('Imprimir DANFE'),
+                icon: const Icon(Icons.picture_as_pdf),
+                label: const Text('DANFE NF-e 55'),
                 onPressed: () async {
                   final messenger = ScaffoldMessenger.of(context);
                   final pdf = await controller.fetchDanfePdfFromLink();
