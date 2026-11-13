@@ -278,8 +278,8 @@ class CartScreen extends StatelessWidget {
           actions: [
             if (temDanfe)
               TextButton.icon(
-                icon: const Icon(Icons.picture_as_pdf),
-                label: const Text('Abrir DANFE'),
+                icon: const Icon(Icons.print),
+                label: const Text('Imprimir DANFE'),
                 onPressed: () async {
                   final messenger = ScaffoldMessenger.of(context);
                   final pdf = await controller.fetchDanfePdfFromLink();
@@ -291,10 +291,25 @@ class CartScreen extends StatelessWidget {
                   }
                 },
               ),
+            if ((controller.lastBoletoLink ?? '').isNotEmpty)
+              TextButton.icon(
+                icon: const Icon(Icons.receipt_long),
+                label: const Text('Boleto'),
+                onPressed: () async {
+                  final messenger = ScaffoldMessenger.of(context);
+                  final pdf = await controller.fetchBoletoPdf();
+                  if (pdf != null) {
+                    await Printing.layoutPdf(onLayout: (_) async => pdf, name: 'Boleto');
+                  } else {
+                    messenger.showSnackBar(const SnackBar(
+                        content: Text('Não foi possível abrir o boleto agora.')));
+                  }
+                },
+              ),
             if (controller.printerAvailable)
               TextButton.icon(
                 icon: const Icon(Icons.print),
-                label: const Text('Comprovante'),
+                label: const Text('Comprovante térmico'),
                 onPressed: () => _showPrinterOptions(context, controller),
               ),
             ElevatedButton.icon(
@@ -315,6 +330,7 @@ class CartScreen extends StatelessWidget {
 
   void _showCheckoutDialog(BuildContext context) {
     String selectedPayment = 'DINHEIRO';
+    final controller = context.read<CartController>();
 
     showDialog(
       context: context,
@@ -323,14 +339,30 @@ class CartScreen extends StatelessWidget {
           // Não sombrear o `context` da tela: ele é usado após fechar este
           // diálogo para mostrar o comprovante e voltar ao catálogo.
           builder: (_, setState) {
+            final clienteLabel = controller.hasCustomer
+                ? '${controller.clienteNome}  (${controller.clienteDoc})'
+                : 'Nenhum cliente selecionado';
             return AlertDialog(
               title: const Text('Finalizar Venda'),
               content: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Selecione a Forma de Pagamento:'),
-                  const SizedBox(height: 12),
+                  const Text('Cliente (destinatário da NF-e 55):',
+                      style: TextStyle(fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 6),
+                  OutlinedButton.icon(
+                    icon: const Icon(Icons.person_search),
+                    label: Text(clienteLabel, overflow: TextOverflow.ellipsis),
+                    onPressed: () async {
+                      await _showCustomerPicker(context, controller);
+                      setState(() {});
+                    },
+                  ),
+                  const Divider(height: 24),
+                  const Text('Forma de Pagamento:',
+                      style: TextStyle(fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 8),
                   DropdownButton<String>(
                     value: selectedPayment,
                     isExpanded: true,
@@ -338,7 +370,8 @@ class CartScreen extends StatelessWidget {
                       DropdownMenuItem(value: 'DINHEIRO', child: Text('Dinheiro')),
                       DropdownMenuItem(value: 'CARTAO_DEBITO', child: Text('Cartão de Débito')),
                       DropdownMenuItem(value: 'CARTAO_CREDITO', child: Text('Cartão de Crédito')),
-                      DropdownMenuItem(value: 'PIX', child: Text('PIX (Offline)')),
+                      DropdownMenuItem(value: 'PIX', child: Text('PIX')),
+                      DropdownMenuItem(value: 'BOLETO', child: Text('Boleto (Sicoob)')),
                     ],
                     onChanged: (val) {
                       if (val != null) setState(() => selectedPayment = val);
@@ -353,8 +386,14 @@ class CartScreen extends StatelessWidget {
                 ),
                 ElevatedButton(
                   onPressed: () async {
+                    if (!controller.hasCustomer) {
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                        content: Text('Selecione o cliente antes de continuar (a NF-e 55 exige destinatário).'),
+                      ));
+                      return;
+                    }
                     Navigator.pop(dialogContext);
-                    await context.read<CartController>().prepareSale(selectedPayment);
+                    await controller.prepareSale(selectedPayment);
                     if (!context.mounted) return;
                     _showDanfePreview(context);
                   },
@@ -364,6 +403,112 @@ class CartScreen extends StatelessWidget {
             );
           },
         );
+      },
+    );
+  }
+
+  /// Seleção do cliente (destinatário da NF-e 55): lista do Bling + novo.
+  Future<void> _showCustomerPicker(
+      BuildContext context, CartController controller) async {
+    final buscaCtrl = TextEditingController();
+    final novoNomeCtrl = TextEditingController();
+    final novoDocCtrl = TextEditingController();
+    List<Map<String, dynamic>>? clientes;
+    var carregando = false;
+    var modoNovo = false;
+
+    await showDialog<void>(
+      context: context,
+      builder: (dc) {
+        return StatefulBuilder(builder: (ctx, setLocal) {
+          Future<void> buscar() async {
+            setLocal(() => carregando = true);
+            final r = await controller.fetchCustomers(q: buscaCtrl.text.trim());
+            setLocal(() {
+              carregando = false;
+              clientes = r;
+            });
+          }
+
+          if (clientes == null && !carregando) buscar();
+
+          Widget corpo;
+          if (modoNovo) {
+            corpo = Column(mainAxisSize: MainAxisSize.min, children: [
+              TextField(
+                controller: novoNomeCtrl,
+                decoration: const InputDecoration(labelText: 'Nome do cliente', isDense: true, border: OutlineInputBorder()),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: novoDocCtrl,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(labelText: 'CPF/CNPJ (só números)', isDense: true, border: OutlineInputBorder()),
+              ),
+              const SizedBox(height: 12),
+              Row(children: [
+                TextButton(onPressed: () => setLocal(() => modoNovo = false), child: const Text('Voltar')),
+                const Spacer(),
+                ElevatedButton(
+                  onPressed: () {
+                    final nome = novoNomeCtrl.text.trim();
+                    final doc = novoDocCtrl.text.replaceAll(RegExp(r'[^0-9]'), '');
+                    if (nome.isEmpty || doc.length < 11) {
+                      ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('Informe nome e um CPF/CNPJ válido.')));
+                      return;
+                    }
+                    controller.setCustomer(nome: nome, doc: doc);
+                    Navigator.pop(dc);
+                  },
+                  child: const Text('Usar este cliente'),
+                ),
+              ]),
+            ]);
+          } else if (carregando) {
+            corpo = const Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator()));
+          } else {
+            final lista = clientes ?? const [];
+            corpo = Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              Row(children: [
+                Expanded(child: TextField(
+                  controller: buscaCtrl,
+                  decoration: const InputDecoration(labelText: 'Buscar por nome/CNPJ', isDense: true, border: OutlineInputBorder()),
+                  onSubmitted: (_) => buscar(),
+                )),
+                IconButton(icon: const Icon(Icons.search), onPressed: buscar),
+              ]),
+              const SizedBox(height: 8),
+              SizedBox(
+                height: 240, width: 320,
+                child: lista.isEmpty
+                    ? const Center(child: Text('Nenhum cliente encontrado.'))
+                    : ListView(children: lista.map((c) => ListTile(
+                          dense: true,
+                          title: Text((c['nome'] ?? '').toString()),
+                          subtitle: Text((c['numero_documento'] ?? '').toString()),
+                          onTap: () {
+                            controller.setCustomer(
+                              nome: (c['nome'] ?? '').toString(),
+                              doc: (c['numero_documento'] ?? '').toString(),
+                            );
+                            Navigator.pop(dc);
+                          },
+                        )).toList()),
+              ),
+              TextButton.icon(
+                icon: const Icon(Icons.person_add),
+                label: const Text('Novo cliente (digitar)'),
+                onPressed: () => setLocal(() => modoNovo = true),
+              ),
+            ]);
+          }
+
+          return AlertDialog(
+            title: const Text('Selecionar cliente'),
+            content: corpo,
+            actions: [TextButton(onPressed: () => Navigator.pop(dc), child: const Text('Fechar'))],
+          );
+        });
       },
     );
   }

@@ -20,17 +20,8 @@ class DanfeTextBuilder {
     b.writeln(razaoSocial);
     b.writeln('CNPJ: $cnpj');
     b.writeln(sep);
-    b.writeln('DANFE NFC-e - Documento Auxiliar');
-    b.writeln('Nota Fiscal de Consumidor Eletronica');
-    if (isContingencia) {
-      b.writeln(sep);
-      b.writeln('EMITIDA EM CONTINGENCIA OFFLINE');
-      b.writeln('Transmitir em ate 24h para a SEFAZ');
-    } else if (protocolo != null) {
-      b.writeln(sep);
-      b.writeln('NFC-e AUTORIZADA pela SEFAZ');
-      b.writeln('Protocolo: $protocolo');
-    }
+    b.writeln('COMPROVANTE DE VENDA');
+    b.writeln('(documento nao fiscal)');
     b.writeln(sep);
     b.writeln('ITEM DESCRICAO           QTD   VL TOT');
     for (var i = 0; i < itens.length; i++) {
@@ -42,12 +33,12 @@ class DanfeTextBuilder {
     b.writeln('VALOR TOTAL R\$: ${valorTotal.toStringAsFixed(2)}');
     b.writeln('PAGAMENTO: $formaPagamento');
     b.writeln(sep);
-    b.writeln('NFC-e Serie: $serie  Numero: $numero');
-    b.writeln('Chave de Acesso:');
-    b.writeln(_formatChave(chaveAcesso));
-    b.writeln(sep);
-    b.writeln('[ QR Code da SEFAZ ]');
-    b.writeln('Consulta via QR Code ou Chave de Acesso');
+    if (chaveAcesso.trim().isNotEmpty) {
+      b.writeln('NF-e 55 - Chave de Acesso:');
+      b.writeln(_formatChave(chaveAcesso));
+    } else {
+      b.writeln('NF-e 55 emitida pelo sistema (PDF).');
+    }
     return b.toString();
   }
 

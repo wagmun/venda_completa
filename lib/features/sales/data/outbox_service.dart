@@ -20,6 +20,25 @@ class OutboxService {
     required this.apiBaseUrl,
   });
 
+  /// Busca a lista de clientes (contatos do Bling) para seleção na venda.
+  /// [q] filtra por nome/documento. Retorna lista de {nome, numero_documento}.
+  Future<List<Map<String, dynamic>>> fetchCustomers({String q = ''}) async {
+    final token = await storage.getToken();
+    if (token == null || token == 'token_demo_offline') return const [];
+    try {
+      final uri = Uri.parse('$apiBaseUrl/sync/customers')
+          .replace(queryParameters: q.isEmpty ? null : {'q': q});
+      final res = await client.get(uri,
+          headers: {'Authorization': 'Bearer $token'});
+      if (res.statusCode == 200) {
+        final j = jsonDecode(res.body) as Map<String, dynamic>;
+        final list = (j['customers'] as List?) ?? const [];
+        return list.cast<Map<String, dynamic>>();
+      }
+    } catch (_) {}
+    return const [];
+  }
+
   /// Processa a fila: envia cada pendente para o servidor. Retorna a
   /// quantidade conciliada com sucesso nesta rodada.
   Future<int> processPending() async {

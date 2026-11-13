@@ -161,6 +161,50 @@ class BlingService {
     };
   }
 
+  /// Lista os contatos (clientes) do Bling para seleção na venda.
+  /// [pesquisa] filtra por nome/documento. Retorna lista normalizada.
+  Future<List<Map<String, dynamic>>> listarContatos(String accessToken,
+      {String pesquisa = ''}) async {
+    final q = pesquisa.trim().isEmpty
+        ? '?limite=100'
+        : '?limite=100&pesquisa=${Uri.encodeComponent(pesquisa.trim())}';
+    final res = await _send(
+      'GET',
+      '$_apiBase/contatos$q',
+      headers: {'Authorization': 'Bearer $accessToken'},
+    );
+    final j = jsonDecode(res) as Map<String, dynamic>;
+    final data = (j['data'] as List?) ?? const [];
+    return data.map<Map<String, dynamic>>((e) {
+      final m = e as Map<String, dynamic>;
+      return {
+        'id': m['id'],
+        'nome': (m['nome'] ?? '').toString(),
+        'numero_documento': (m['numeroDocumento'] ?? '').toString(),
+        'tipo_pessoa': (m['tipoPessoa'] ?? '').toString(),
+      };
+    }).toList();
+  }
+
+  /// Busca o link do boleto (conta a receber) gerado para a NF-e, se houver.
+  /// Best-effort: procura a conta a receber vinculada e devolve o link.
+  Future<String> buscarLinkBoleto(String accessToken, int idNota) async {
+    try {
+      final res = await _send(
+        'GET',
+        '$_apiBase/nfe/$idNota',
+        headers: {'Authorization': 'Bearer $accessToken'},
+      );
+      final j = jsonDecode(res) as Map<String, dynamic>;
+      final d = (j['data'] as Map<String, dynamic>?) ?? const {};
+      // alguns retornos trazem o link do boleto direto na nota
+      final link = (d['linkBoleto'] ?? d['linkPDFBoleto'] ?? '').toString();
+      return link;
+    } catch (_) {
+      return '';
+    }
+  }
+
   /// Lista as naturezas de operação ativas do Bling (id + descrição).
   Future<List<Map<String, dynamic>>> listarNaturezas(String accessToken) async {
     final res = await _send(

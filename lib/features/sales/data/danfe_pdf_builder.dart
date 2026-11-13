@@ -3,8 +3,8 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import '../domain/fiscal_service.dart';
 
-/// Gera o PDF do DANFE NFC-e para impressão via sistema (impressoras comuns:
-/// laser/jato de tinta). Formato cupom (80mm de largura).
+/// Gera o PDF de um COMPROVANTE DE VENDA (não fiscal) em formato cupom (80mm),
+/// para impressão via sistema. O documento fiscal é a NF-e 55 (PDF do Bling).
 class DanfePdfBuilder {
   static Future<Uint8List> build(FiscalResult f, {String? protocolo}) async {
     final doc = pw.Document();
@@ -27,17 +27,8 @@ class DanfePdfBuilder {
               pw.Center(child: pw.Text(f.razaoSocial, style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold))),
               pw.Center(child: pw.Text('CNPJ: ${f.cnpj}', style: small)),
               sep(),
-              pw.Center(child: pw.Text('DANFE NFC-e - Documento Auxiliar', style: bold)),
-              pw.Center(child: pw.Text('Nota Fiscal de Consumidor Eletronica', style: small)),
-              if (protocolo != null) ...[
-                sep(),
-                pw.Center(child: pw.Text('NFC-e AUTORIZADA pela SEFAZ', style: bold)),
-                pw.Center(child: pw.Text('Protocolo: $protocolo', style: small)),
-              ] else ...[
-                sep(),
-                pw.Center(child: pw.Text('EMITIDA EM CONTINGENCIA OFFLINE', style: bold)),
-                pw.Center(child: pw.Text('Transmitir em ate 24h para a SEFAZ', style: small)),
-              ],
+              pw.Center(child: pw.Text('COMPROVANTE DE VENDA', style: bold)),
+              pw.Center(child: pw.Text('(documento nao fiscal)', style: small)),
               sep(),
               pw.Row(children: [
                 pw.Expanded(flex: 5, child: pw.Text('DESCRICAO', style: bold)),
@@ -56,20 +47,13 @@ class DanfePdfBuilder {
               ]),
               pw.Text('PAGAMENTO: ${f.formaPagamento}', style: small),
               sep(),
-              pw.Center(child: pw.Text('NFC-e Serie: ${f.serie}  Numero: ${f.numero}', style: small)),
-              pw.Center(child: pw.Text('Chave de Acesso:', style: bold)),
-              pw.Center(child: pw.Text(chaveFmt, style: small, textAlign: pw.TextAlign.center)),
+              if (chave.trim().isNotEmpty) ...[
+                pw.Center(child: pw.Text('NF-e 55 - Chave de Acesso:', style: bold)),
+                pw.Center(child: pw.Text(chaveFmt, style: small, textAlign: pw.TextAlign.center)),
+              ] else
+                pw.Center(child: pw.Text('NF-e 55 emitida pelo sistema (PDF).', style: small)),
               pw.SizedBox(height: 4),
-              pw.Center(
-                child: pw.BarcodeWidget(
-                  barcode: pw.Barcode.qrCode(),
-                  data: 'chave=$chave',
-                  width: 90,
-                  height: 90,
-                ),
-              ),
-              pw.SizedBox(height: 2),
-              pw.Center(child: pw.Text('Consulta via QR Code ou Chave de Acesso', style: small)),
+              pw.Center(child: pw.Text('Obrigado pela preferencia!', style: small)),
             ],
           );
         },

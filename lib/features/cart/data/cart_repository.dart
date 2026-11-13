@@ -17,6 +17,8 @@ class CartRepository {
     required List<CartItem> items,
     required double totalAmount,
     required String paymentMethod,
+    String? clienteNome,
+    String? clienteDoc,
     Map<String, dynamic>? fiscal,
   }) async {
     if (items.isEmpty) return null;
@@ -29,6 +31,8 @@ class CartRepository {
       'created_at': DateTime.now().toIso8601String(),
       'payment_method': paymentMethod,
       'total_amount': totalAmount,
+      if (clienteNome != null && clienteNome.isNotEmpty) 'cliente_nome': clienteNome,
+      if (clienteDoc != null && clienteDoc.isNotEmpty) 'cliente_cpf_cnpj': clienteDoc,
       'items': items.map((item) => item.toJson()).toList(),
       if (fiscal != null) 'fiscal': fiscal,
     });

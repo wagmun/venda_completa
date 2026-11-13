@@ -13,7 +13,7 @@ import 'package:venda_completa_server/bling_service.dart';
 
 /// Versão publicada do servidor. BUMP a cada deploy relevante — a aba "Status"
 /// do painel mostra este valor, então dá pra ver na hora se o deploy subiu.
-const String kServerVersion = '2026-11-12.6-home';
+const String kServerVersion = '2026-11-13.1-cliente-boleto';
 
 final BlingService _bling = BlingService();
 
@@ -298,6 +298,7 @@ Future<Response> _syncVenda(Request req) async {
     clienteDoc: clienteDoc,
     items: items,
     valorTotal: valorTotal,
+    gerarBoleto: formaPagamento.toUpperCase() == 'BOLETO',
   );
 
   // Broadcast de estoque em tempo real para os outros vendedores do tenant.
@@ -443,6 +444,7 @@ Future<void> _emitirNfe55Bling({
   required String clienteDoc,
   required List<Map<String, dynamic>> items,
   required double valorTotal,
+  required bool gerarBoleto,
 }) async {
   final bt = await _blingToken(tenantId);
   if (bt == null) return; // empresa sem Bling conectado
@@ -495,11 +497,13 @@ Future<void> _emitirNfe55Bling({
     final venc = DateTime.now().add(const Duration(days: 1));
     final vencStr =
         '${venc.year.toString().padLeft(4, '0')}-${venc.month.toString().padLeft(2, '0')}-${venc.day.toString().padLeft(2, '0')}';
+    // Só vincula a forma de boleto quando a venda foi paga em boleto.
     final parcelas = <Map<String, dynamic>>[
       {
         'data': vencStr,
         'valor': valorTotal,
-        if (formaBoletoId != null) 'formaPagamento': {'id': formaBoletoId},
+        if (gerarBoleto && formaBoletoId != null)
+          'formaPagamento': {'id': formaBoletoId},
       }
     ];
 
@@ -526,12 +530,15 @@ Future<void> _emitirNfe55Bling({
     // Envia à SEFAZ e consulta o resultado.
     await _bling.enviarNfe(bt, idNota);
     final st = await _bling.getNfe(bt, idNota);
+    // Link do boleto, só se a venda foi em boleto.
+    final linkBoleto = gerarBoleto ? await _bling.buscarLinkBoleto(bt, idNota) : '';
     await Db.connection.execute(
       Sql.named('''
         UPDATE fiscal_invoices
         SET status_sefaz = @s,
             chave_acesso = NULLIF(@c, ''),
             link_danfe = NULLIF(@l, ''),
+            link_boleto = NULLIF(@lb, ''),
             numero = COALESCE(NULLIF(@n, '')::int, numero),
             protocolo_autorizacao = NULLIF(@c, ''),
             motivo_rejeicao = NULLIF(@m, '')
@@ -541,6 +548,7 @@ Future<void> _emitirNfe55Bling({
         's': st['status'],
         'c': st['chave_acesso'],
         'l': st['link_danfe'],
+        'lb': linkBoleto,
         'n': st['numero'],
         'm': st['motivo'],
         'bid': idNota,
@@ -562,6 +570,23 @@ Future<void> _emitirNfe55Bling({
   }
 }
 
+/// GET /sync/customers — lista os clientes (contatos) do Bling para o app
+/// escolher o destinatário da NF-e. Aceita ?q= para filtrar.
+Future<Response> _syncCustomers(Request req) async {
+  final claims = _authClaims(req);
+  if (claims == null) return _json(401, {'error': 'Token inválido.'});
+  final tenantId = claims['tenant_id'].toString();
+  final token = await _blingToken(tenantId);
+  if (token == null) return _json(200, {'customers': []});
+  try {
+    final q = req.url.queryParameters['q'] ?? '';
+    final lista = await _bling.listarContatos(token, pesquisa: q);
+    return _json(200, {'customers': lista});
+  } catch (e) {
+    return _json(200, {'customers': [], 'erro': e.toString()});
+  }
+}
+
 Future<Response> _fiscalStatus(Request req, String orderId) async {
   final claims = _authClaims(req);
   if (claims == null) return _json(401, {'error': 'Token inválido.'});
@@ -569,7 +594,7 @@ Future<Response> _fiscalStatus(Request req, String orderId) async {
   final rows = await Db.query(
     '''
     SELECT fi.status_sefaz, fi.protocolo_autorizacao, fi.chave_acesso,
-           fi.modelo, fi.link_danfe, fi.motivo_rejeicao
+           fi.modelo, fi.link_danfe, fi.link_boleto, fi.motivo_rejeicao
     FROM fiscal_invoices fi
     JOIN orders o ON o.id = fi.order_id
     WHERE o.tenant_id = @t AND o.client_order_id = @c
@@ -586,6 +611,7 @@ Future<Response> _fiscalStatus(Request req, String orderId) async {
     'chave_acesso': rows.first['chave_acesso'],
     'modelo': rows.first['modelo'],
     'link_danfe': rows.first['link_danfe'],
+    'link_boleto': rows.first['link_boleto'],
     'motivo': rows.first['motivo_rejeicao'],
   });
 }
@@ -1420,6 +1446,7 @@ Future<void> main() async {
     ..post('/auth/change-password', _changePassword)
     ..get('/sync/catalog', _catalog)
     ..post('/sync/vendas', _syncVenda)
+    ..get('/sync/customers', _syncCustomers)
     ..get('/fiscal/status/<orderId>', _fiscalStatus)
     ..get('/ws', _wsHandler)
     // Painel administrativo (role=admin)

@@ -37,11 +37,48 @@ class CartController extends ChangeNotifier {
   String get transmissionStatus => _transmissionStatus;
   bool get lastSaleAuthorized => _transmissionStatus.contains('AUTORIZADA');
 
-  // Chave de acesso e link do DANFE da NF-e 55 emitida no servidor.
+  // Chave de acesso, DANFE e boleto da NF-e 55 emitida no servidor.
   String? _lastChaveNfe;
   String? _lastDanfeLink;
+  String? _lastBoletoLink;
   String? get lastChaveNfe => _lastChaveNfe;
   String? get lastDanfeLink => _lastDanfeLink;
+  String? get lastBoletoLink => _lastBoletoLink;
+
+  // Cliente (destinatário) selecionado para a venda.
+  String? _clienteNome;
+  String? _clienteDoc;
+  String? get clienteNome => _clienteNome;
+  String? get clienteDoc => _clienteDoc;
+  bool get hasCustomer => (_clienteDoc ?? '').trim().isNotEmpty;
+
+  /// Define o cliente destinatário da venda (da lista do Bling ou novo).
+  void setCustomer({required String nome, required String doc}) {
+    _clienteNome = nome.trim();
+    _clienteDoc = doc.replaceAll(RegExp(r'[^0-9]'), '');
+    notifyListeners();
+  }
+
+  void clearCustomer() {
+    _clienteNome = null;
+    _clienteDoc = null;
+    notifyListeners();
+  }
+
+  /// Lista os clientes (contatos do Bling) para seleção.
+  Future<List<Map<String, dynamic>>> fetchCustomers({String q = ''}) async =>
+      _outboxService?.fetchCustomers(q: q) ?? Future.value(const []);
+
+  /// Baixa o PDF do boleto (link do Bling), para abrir/imprimir.
+  Future<Uint8List?> fetchBoletoPdf() async {
+    final link = _lastBoletoLink;
+    if (link == null || link.isEmpty) return null;
+    try {
+      final res = await http.get(Uri.parse(link));
+      if (res.statusCode == 200) return res.bodyBytes;
+    } catch (_) {}
+    return null;
+  }
 
   // DANFE a exibir: versão autorizada (c/ protocolo) se já autorizada; senão a prévia.
   String? _authorizedPreview;
@@ -172,6 +209,8 @@ class CartController extends ChangeNotifier {
       items: _items,
       totalAmount: totalAmount,
       paymentMethod: _pendingPayment!,
+      clienteNome: _clienteNome,
+      clienteDoc: _clienteDoc,
       fiscal: _pendingFiscal?.toPayload(),
     );
     final success = orderId != null;
@@ -184,12 +223,14 @@ class CartController extends ChangeNotifier {
       _transmissionStatus = 'Emitindo NF-e 55 pelo Bling...';
       _lastChaveNfe = null;
       _lastDanfeLink = null;
+      _lastBoletoLink = null;
       try {
         await _outboxService?.processPending();
         final st = await _outboxService?.fetchFiscalStatus(orderId);
         final status = st?['status_sefaz'];
         _lastChaveNfe = (st?['chave_acesso'])?.toString();
         _lastDanfeLink = (st?['link_danfe'])?.toString();
+        _lastBoletoLink = (st?['link_boleto'])?.toString();
         if (status == 'AUTORIZADO') {
           _lastProtocolo = st!['chave_acesso']?.toString();
           _transmissionStatus = 'NF-e 55 AUTORIZADA';

@@ -15,9 +15,9 @@ class DanfeItem {
   double get total => precoUnitario * quantidade;
 }
 
-/// Monta a sequência de comandos ESC/POS do DANFE NFC-e Simplificado para
-/// impressoras térmicas de 58/80mm (Bluetooth SPP). Peça pura: devolve bytes;
-/// o envio à impressora é feito por um serviço de impressão separado.
+/// Monta a sequência de comandos ESC/POS de um COMPROVANTE DE VENDA (não fiscal)
+/// para impressoras térmicas de 58/80mm (Bluetooth SPP). O documento fiscal é a
+/// NF-e modelo 55 (emitida pelo Bling, em PDF A4) — este cupom é só um recibo.
 class DanfeEscPosBuilder {
   final List<int> _bytes = [];
 
@@ -56,14 +56,8 @@ class DanfeEscPosBuilder {
     _text(razaoSocial, align: _alignCenter, bold: true);
     _text('CNPJ: $cnpj', align: _alignCenter);
     _separator();
-    _text('DANFE NFC-e - Documento Auxiliar', align: _alignCenter, bold: true);
-    _text('Nota Fiscal de Consumidor Eletronica', align: _alignCenter);
-
-    if (isContingencia) {
-      _separator();
-      _text('EMITIDA EM CONTINGENCIA OFFLINE', align: _alignCenter, bold: true);
-      _text('Transmitir em ate 24h para a SEFAZ', align: _alignCenter);
-    }
+    _text('COMPROVANTE DE VENDA', align: _alignCenter, bold: true);
+    _text('(documento nao fiscal)', align: _alignCenter);
     _separator();
 
     _text('ITEM  DESCRICAO           QTD   VL TOT', align: _alignLeft, bold: true);
@@ -79,13 +73,13 @@ class DanfeEscPosBuilder {
     _text('PAGAMENTO: $formaPagamento', align: _alignLeft);
     _separator();
 
-    _text('NFC-e Serie: $serie  Numero: $numero', align: _alignCenter);
-    _text('Chave de Acesso:', align: _alignCenter, bold: true);
-    _text(_formatChave(chaveAcesso), align: _alignCenter);
-    _separator();
-
-    _appendQrCode('chave=$chaveAcesso');
-    _text('\nConsulta via QR Code ou Chave de Acesso', align: _alignCenter);
+    if (chaveAcesso.trim().isNotEmpty) {
+      _text('NF-e 55 - Chave de Acesso:', align: _alignCenter, bold: true);
+      _text(_formatChave(chaveAcesso), align: _alignCenter);
+    } else {
+      _text('NF-e 55 emitida pelo sistema (PDF).', align: _alignCenter);
+    }
+    _text('\nObrigado pela preferencia!', align: _alignCenter);
     _bytes.addAll(_feedCut);
 
     return Uint8List.fromList(_bytes);
@@ -99,17 +93,5 @@ class DanfeEscPosBuilder {
       if (i + 4 < chave.length) b.write(' ');
     }
     return b.toString();
-  }
-
-  /// Comandos ESC/POS (modelo 2) para renderizar o QR Code da SEFAZ.
-  void _appendQrCode(String data) {
-    _bytes.addAll(_alignCenter);
-    _bytes.addAll([0x1D, 0x28, 0x6B, 0x03, 0x00, 0x31, 0x43, 0x08]); // tamanho
-    _bytes.addAll([0x1D, 0x28, 0x6B, 0x03, 0x00, 0x31, 0x45, 0x30]); // correção
-    final qr = data.codeUnits;
-    final storeLen = qr.length + 3;
-    _bytes.addAll([0x1D, 0x28, 0x6B, storeLen % 256, storeLen ~/ 256, 0x31, 0x50, 0x30]);
-    _bytes.addAll(qr);
-    _bytes.addAll([0x1D, 0x28, 0x6B, 0x03, 0x00, 0x31, 0x51, 0x30]); // imprime
   }
 }
