@@ -251,9 +251,13 @@ class BlingService {
     int? lojaId,
     String? observacoes,
   }) async {
+    final hoje = DateTime.now();
+    final dataOperacao =
+        '${hoje.year.toString().padLeft(4, '0')}-${hoje.month.toString().padLeft(2, '0')}-${hoje.day.toString().padLeft(2, '0')}';
     final payload = <String, dynamic>{
       'tipo': 1, // saída
       'finalidade': 1, // normal
+      'dataOperacao': dataOperacao,
       'contato': destinatario,
       'itens': itens,
       'parcelas': parcelas,

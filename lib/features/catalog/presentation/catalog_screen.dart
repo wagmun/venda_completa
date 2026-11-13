@@ -4,6 +4,7 @@ import '../../../core/widgets/camera_barcode_scanner_widget.dart';
 import '../../../core/widgets/physical_barcode_scanner_listener.dart';
 import '../../auth/presentation/auth_controller.dart';
 import '../../cart/presentation/cart_controller.dart';
+import '../../cart/presentation/customer_picker.dart';
 import 'catalog_controller.dart';
 
 class CatalogScreen extends StatefulWidget {
@@ -363,6 +364,60 @@ class _CatalogScreenState extends State<CatalogScreen> {
         ),
         body: Column(
           children: [
+            // Barra fixa do cliente (destinatário da NF-e 55). Escolhido uma vez,
+            // vale para as vendas; pode trocar a qualquer momento.
+            Material(
+              color: cartController.hasCustomer
+                  ? Colors.green.withValues(alpha: 0.10)
+                  : Colors.orange.withValues(alpha: 0.12),
+              child: InkWell(
+                onTap: () async {
+                  await showCustomerPicker(context, cartController);
+                  if (context.mounted) setState(() {});
+                },
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  child: Row(
+                    children: [
+                      Icon(
+                        cartController.hasCustomer ? Icons.person : Icons.person_off,
+                        size: 20,
+                        color: cartController.hasCustomer ? Colors.green[800] : Colors.orange[800],
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              cartController.hasCustomer ? 'Cliente' : 'Nenhum cliente selecionado',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: cartController.hasCustomer ? Colors.green[900] : Colors.orange[900],
+                              ),
+                            ),
+                            Text(
+                              cartController.hasCustomer
+                                  ? '${cartController.clienteNome}  (${cartController.clienteDoc})'
+                                  : 'Toque para selecionar',
+                              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: () async {
+                          await showCustomerPicker(context, cartController);
+                          if (context.mounted) setState(() {});
+                        },
+                        child: Text(cartController.hasCustomer ? 'Trocar' : 'Selecionar'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
             Padding(
               padding: const EdgeInsets.all(12.0),
               child: TextField(

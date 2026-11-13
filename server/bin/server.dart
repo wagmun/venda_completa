@@ -13,7 +13,7 @@ import 'package:venda_completa_server/bling_service.dart';
 
 /// Versão publicada do servidor. BUMP a cada deploy relevante — a aba "Status"
 /// do painel mostra este valor, então dá pra ver na hora se o deploy subiu.
-const String kServerVersion = '2026-11-13.1-cliente-boleto';
+const String kServerVersion = '2026-11-13.2-dataoperacao';
 
 final BlingService _bling = BlingService();
 
