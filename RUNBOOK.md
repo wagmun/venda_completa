@@ -106,22 +106,28 @@ Resposta `201` = criada. `409` = já existe. Anotar o login no item 3 deste arqu
 ## 7. Procedimento — rodar um teste (1 ação por linha)
 
 ### PAPÉIS (definição fixa — não inverter)
-- **Aion = o DESENVOLVEDOR (você).** Dona do app. Monta/configura a plataforma. **Não é cliente.**
-- **cliente = a empresa que COMPRA e USA o app** (futuro). Dona do Bling/estoque/vendas dela.
-- **Conectar Bling:** o dono conecta o próprio Bling **direto** (Aion conecta o Bling da Aion sem link). O **link "Copiar para o cliente"** é só pra um **cliente externo** autorizar o Bling DELE.
-- **Teste de hoje:** NÃO há cliente. É **tudo Aion (você)**, usando o **Bling da própria Aion** (CNPJ 69.032.238), você simulando também o vendedor. Nenhum link é enviado.
-- Conceitualmente, operações sobre Bling/estoque/venda são do papel "cliente"; no teste, Aion as executa simulando.
+- **Aion = o DESENVOLVEDOR (você).** Dona do app. Faz TODO o trabalho de configuração.
+- **cliente = a empresa que COMPRA e USA o app** (ex.: R A Sanches). Dona do Bling/estoque/vendas dela.
+- **Arquitetura DECIDIDA (não reabrir): multi-tenant — cada cliente é uma EMPRESA SEPARADA** no sistema (tenant próprio). O Bling do cliente conecta na pasta DELE, não na Aion.
 
-Papéis (produção): **[Aion]** = plataforma/config · **[cliente]** = operação (Bling, estoque, vendas).
-Ordem importa: **sincronizar estoque vem logo após conectar o Bling**; **config fiscal fica antes da 1ª venda** (natureza de operação só importa na hora da nota, não no espelhamento do estoque).
+### REGRA DE OURO DO LINK / LOGIN (a causa de confusão — fixar)
+- O painel mostra/mexe na empresa **de quem está logado**. Quem opera é sempre a Aion (você); o **login** só diz **em qual pasta** você está.
+- O botão **"Copiar link para o cliente"** CARIMBA no link o `state` = tenant **de quem está logado**. Portanto, para conectar o Bling do cliente NA PASTA DO CLIENTE, **gere o link logado como o admin DO CLIENTE** (ex.: admin@rasanches.com), nunca como Aion.
+- Para configurar/acompanhar um cliente (Status, Bling, Sincronizar, Vendedores, Fiscal), **entre no painel como o admin DAQUELE cliente**. Continua sendo você operando — só na pasta certa.
+- ERRO JÁ COMETIDO: gerar o link logado como Aion → `state` da Aion → Bling do cliente cairia na Aion. Não repetir.
 
-1. [Aion] Painel `/admin` → logar como admin da empresa → aba **Status** confirma empresa/CNPJ.
-2. [Aion] Aba **Bling** → **Conectar ao Bling** (ou **Copiar link para o cliente** e enviar).
-3. [cliente] Na tela do Bling, logar (CNPJ **ou** e-mail) e **Autorizar**.
-4. [Aion] Confirmar "conectado" (aba Bling ou Status).
-5. [Aion] **Sincronizar estoque agora** → puxa os produtos do Bling.
-6. [Aion] Aba **Vendedores** → criar o login do vendedor (login do app).
-7. [Aion] **Configuração fiscal** → **Carregar do Bling** → natureza de operação de venda + forma de pagamento do boleto → **Salvar**. (O CFOP/imposto por produto o Bling resolve da ficha do produto; aqui é só a natureza padrão de venda.)
+Ordem importa: **sincronizar estoque vem logo após conectar o Bling**; **config fiscal fica antes da 1ª venda**.
+
+> Abaixo, todos os passos são executados por **você (Aion)**, mas **logado como o admin do cliente**.
+
+1. Cadastrar o cliente (página `/novo-cliente` ou provision) → anotar login do painel dele.
+2. Entrar no painel como **admin do cliente** → aba **Status** confirma empresa/CNPJ do cliente.
+3. Aba **Bling** → **Copiar link para o cliente** (link já com o `state` do cliente) → enviar ao cliente.
+4. Cliente, na tela do Bling, loga (CNPJ **ou** e-mail) e **Autoriza**.
+5. Confirmar "conectado" (aba Bling ou Status) — ainda logado como o cliente.
+6. **Sincronizar estoque agora** → puxa os produtos do Bling do cliente.
+7. Aba **Vendedores** → criar o login do vendedor (login do app).
+8. **Configuração fiscal** → **Carregar do Bling** → natureza de operação de venda + forma de pagamento do boleto → **Salvar**.
 8. [cliente] Instalar o APK no celular; parear a impressora Bluetooth.
 9. [cliente] App → entrar como vendedor → vender → NF-e 55 + boleto → "Abrir DANFE" / imprimir "Comprovante".
 
